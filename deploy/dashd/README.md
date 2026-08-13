@@ -1,63 +1,80 @@
-# yoga-dashd — pruned Dash mainnet node
+# yoga-dashd — pruned Dash mainnet + testnet
 
-Take this folder to `yoga-v4vapp` and start it. It only syncs the **Dash** chain (not Bitcoin). A full Dash node is about 40 GB; this prune target keeps roughly 2–3 GB of block files (budget **8–10 GB** disk and **2 GB RAM**).
+Lives on yoga at `/home/bol/code/dashd`. Two containers, two volumes. Mainnet IBD is independent of testnet.
+
+| Service | Network | RPC | P2P | Volume |
+|---|---|---|---|---|
+| `dashd` | mainnet | 9998 | 9999 | `dashd-data` |
+| `dashd-testnet` | testnet | 19998 | 19999 | `dashd-testnet-data` |
+
+Ports are published on `127.0.0.1` and yoga’s Tailscale IP only (`LOCAL_TAILSCALE_IP` in `.env`). Not on `0.0.0.0`.
+
+This is the **Dash** chain, not Bitcoin. Prune target ~2.2 GiB of block files per network (budget **8–10 GB** for mainnet plus a few GB for testnet, **2 GB RAM** each).
 
 ## Start
 
-```bash
-scp -r deploy/yoga-dashd yoga-v4vapp:~/yoga-dashd
-ssh yoga-v4vapp
-cd ~/yoga-dashd
-cp .env.example .env
-# put a long random password in .env
-docker compose up -d
-docker compose logs -f
-```
-
-If you already started the broken compose (`exec: -s: invalid option`), copy the updated file over and recreate. The volume is empty enough to keep:
+On yoga:
 
 ```bash
-docker compose up -d --force-recreate
+cd /home/bol/code/dashd
+# .env already has RPC password + LOCAL_TAILSCALE_IP
+
+docker compose up -d                 # both
+docker compose up -d dashd-testnet   # testnet only — does not touch mainnet volume
+docker compose logs -f dashd-testnet
 ```
 
-First start pulls `dashpay/dashd:23.1.8` and begins initial block download. That can take hours to a day depending on uplink and whether port 9999 is reachable inbound.
+From this repo, after editing compose:
+
+```bash
+scp deploy/dashd/docker-compose.yml yoga-v4vapp:/home/bol/code/dashd/
+ssh yoga-v4vapp 'cd /home/bol/code/dashd && docker compose up -d'
+```
+
+`docker compose up -d` recreates only services whose config changed. Existing `dashd-data` is kept.
 
 ## Is it synced?
 
-```bash
-docker compose exec dashd sh -c 'dash-cli -rpcport=9998 -rpcuser="$DASH_RPC_USER" -rpcpassword="$DASH_RPC_PASSWORD" getblockchaininfo'
-```
-
-Watch `verificationprogress` approach `1`, and `initialblockdownload` become `false`. `pruneheight` will start rising once block files pass the 2200 MiB target.
+Mainnet:
 
 ```bash
-docker compose exec dashd dash-cli getnetworkinfo   # connections
-docker compose exec dashd dash-cli getblockcount
+docker compose exec dashd sh -c \
+  'dash-cli -rpcport=9998 -rpcuser="$DASH_RPC_USER" -rpcpassword="$DASH_RPC_PASSWORD" getblockchaininfo'
 ```
 
-## Ports
+Testnet (`-testnet` is required so dash-cli uses the testnet datadir):
 
-| Port | Bind | Why |
-|---|---|---|
-| 9999/tcp | `0.0.0.0` | Dash P2P. Open this for faster sync. |
-| 9998/tcp | `127.0.0.1` | JSON-RPC. Local `dash-cli` only for now. |
+```bash
+docker compose exec dashd-testnet sh -c \
+  'dash-cli -testnet -rpcport=19998 -rpcuser="$DASH_RPC_USER" -rpcpassword="$DASH_RPC_PASSWORD" getblockchaininfo'
+```
 
-Do **not** publish 9998 on the public internet. When `v4vapp-dash` needs this node from another Tailscale host, change the RPC publish line in `docker-compose.yml` to the yoga Tailscale IP.
+Watch `verificationprogress` → `1` and `initialblockdownload` → `false`. Testnet `chain` should be `test`.
+
+v4vapp-dash on another Tailscale host:
+
+```
+DASH_NETWORK=testnet
+DASH_RPC_URL=http://100.83.149.118:19998
+DASH_RPC_USER=...
+DASH_RPC_PASSWORD=...
+DASH_RPC_WALLET=watch
+```
 
 ## Dash-specific prune rules
 
-These are why this is not a copy-paste of a Bitcoin pruned node:
-
 - Automatic prune target must be **> 945 MiB** (`prune=550` is Bitcoin and will be rejected).
 - Dash defaults to `txindex=1`. Prune requires `-txindex=0`.
-- Prune requires `-disablegovernance=1` (no proposal/voting validation). InstantSend and ChainLocks still work.
-- Turning prune **off** later means re-downloading the whole chain.
+- Prune requires `-disablegovernance=1`. InstantSend and ChainLocks still work.
+- Turning prune **off** later means re-downloading that chain.
 
-Wallet is off (`DISABLEWALLET=1`). Sync does not need one. The watch-only descriptor wallet comes later, when v4vapp-dash is ready.
+Wallet is **on** (`-disablewallet=0`) so v4vapp-dash can `createwallet watch`. Private keys never go into dashd; the API imports an xpub descriptor.
 
 ## Stop / wipe
 
 ```bash
-docker compose down          # keeps the chain volume
-docker compose down -v       # deletes the chain; next up is a full resync
+docker compose down                         # keeps both volumes
+docker compose down dashd-testnet           # stop testnet only
+docker volume rm dashd_dashd-testnet-data   # wipe testnet chain only (name may be prefixed)
+docker compose down -v                      # deletes BOTH chains — do not do this
 ```

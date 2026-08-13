@@ -1,32 +1,33 @@
-# Pruned Dash mainnet node for yoga-v4vapp.
+# Pruned Dash nodes for yoga-v4vapp (/home/bol/code/dashd).
 # Copy this folder, copy .env.example → .env, then: docker compose up -d
 #
-# This is the DASH chain, not Bitcoin. Unpruned Dash is ~40 GB; this
-# prune target keeps block files around 2.2 GiB (budget ~8–10 GiB disk).
+# Two services, two volumes:
+#   dashd         — mainnet  RPC 9998  P2P 9999   volume dashd-data
+#   dashd-testnet — testnet  RPC 19998 P2P 19999  volume dashd-testnet-data
 #
 # dashpay/dashd:23+ uses ENTRYPOINT /docker-entrypoint.sh which does `exec "$@"`.
-# The first command argument MUST be `dashd`. Flags alone become `exec -server=1`
-# and fail with: exec: -s: invalid option.
+# The first command argument MUST be `dashd`.
+#
+# Start only testnet:  docker compose up -d dashd-testnet
+# Start only mainnet:  docker compose up -d dashd
+
+x-dashd-common: &dashd-common
+  image: dashpay/dashd:23.1.8
+  restart: unless-stopped
+  environment: &dashd-env
+    DASH_RPC_USER: ${DASH_RPC_USER:-dashrpc}
+    DASH_RPC_PASSWORD: ${DASH_RPC_PASSWORD:?Set DASH_RPC_PASSWORD in .env}
 
 services:
   dashd:
-    image: dashpay/dashd:23.1.8
+    <<: *dashd-common
     container_name: yoga-dashd
-    restart: unless-stopped
-    environment:
-      DASH_RPC_USER: ${DASH_RPC_USER:-dashrpc}
-      DASH_RPC_PASSWORD: ${DASH_RPC_PASSWORD:?Set DASH_RPC_PASSWORD in .env}
     command:
       - dashd
       - -server=1
       - -listen=1
-      # Info lines (UpdateTip / ProcessNewBlock) are always logged; dashd has no
-      # quieter-than-info level. Keep them out of `docker logs` and only write
-      # debug.log in the data volume. Tail with:
-      #   docker compose exec dashd tail -f /home/dash/.dashcore/debug.log
       - -printtoconsole=0
       - -shrinkdebugfile=1
-      # Set to 0 after IBD (or now — no resync) so v4vapp-dash can createwallet watch.
       - -disablewallet=0
       - -txindex=0
       - -addressindex=0
@@ -43,13 +44,10 @@ services:
       - -rpcallowip=10.0.0.0/8
       - -rpcallowip=172.16.0.0/12
       - -rpcallowip=192.168.0.0/16
-      # Tailscale CGNAT (100.64.0.0/10)
       - -rpcallowip=100.64.0.0/10
       - -rpcuser=${DASH_RPC_USER:-dashrpc}
       - -rpcpassword=${DASH_RPC_PASSWORD:?Set DASH_RPC_PASSWORD in .env}
     ports:
-      # Host publish only on loopback + this machine's Tailscale IP (from .env).
-      # Not on 0.0.0.0 / LAN / public interfaces.
       - "127.0.0.1:9999:9999"
       - "${LOCAL_TAILSCALE_IP:?Set LOCAL_TAILSCALE_IP in .env}:9999:9999"
       - "127.0.0.1:9998:9998"
@@ -67,6 +65,55 @@ services:
       retries: 20
       start_period: 120s
 
+  dashd-testnet:
+    <<: *dashd-common
+    container_name: yoga-dashd-testnet
+    command:
+      - dashd
+      - -testnet=1
+      - -server=1
+      - -listen=1
+      - -printtoconsole=0
+      - -shrinkdebugfile=1
+      - -disablewallet=0
+      - -txindex=0
+      - -addressindex=0
+      - -spentindex=0
+      - -timestampindex=0
+      - -prune=2200
+      - -disablegovernance=1
+      - -dbcache=256
+      - -maxmempool=100
+      - -maxconnections=24
+      # Explicit testnet ports (defaults are 19998 / 19999).
+      - -rpcport=19998
+      - -port=19999
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=127.0.0.1
+      - -rpcallowip=10.0.0.0/8
+      - -rpcallowip=172.16.0.0/12
+      - -rpcallowip=192.168.0.0/16
+      - -rpcallowip=100.64.0.0/10
+      - -rpcuser=${DASH_RPC_USER:-dashrpc}
+      - -rpcpassword=${DASH_RPC_PASSWORD:?Set DASH_RPC_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:19999:19999"
+      - "${LOCAL_TAILSCALE_IP:?Set LOCAL_TAILSCALE_IP in .env}:19999:19999"
+      - "127.0.0.1:19998:19998"
+      - "${LOCAL_TAILSCALE_IP:?Set LOCAL_TAILSCALE_IP in .env}:19998:19998"
+    volumes:
+      - dashd-testnet-data:/home/dash
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "dash-cli -testnet -rpcport=19998 -rpcuser=\"$$DASH_RPC_USER\" -rpcpassword=\"$$DASH_RPC_PASSWORD\" getblockchaininfo",
+        ]
+      interval: 30s
+      timeout: 15s
+      retries: 20
+      start_period: 120s
+
 volumes:
   dashd-data:
-
+  dashd-testnet-data:
