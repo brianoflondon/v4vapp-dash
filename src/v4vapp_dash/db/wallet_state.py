@@ -12,6 +12,13 @@ class WalletStateMismatch(RuntimeError):
     """Configured xpub/fingerprint does not match the stored row for this network."""
 
 
+def _brief(value: str | None) -> str:
+    text = value or ""
+    if len(text) <= 20:
+        return text
+    return f"{text[:12]}…{text[-6:]}({len(text)})"
+
+
 async def ensure_wallet_state(
     db: AsyncDatabase[dict[str, Any]],
     *,
@@ -46,7 +53,11 @@ async def ensure_wallet_state(
     stored_fp = str(existing.get("fingerprint", "")).lower()
     if stored_xpub != account_xpub or stored_fp != fingerprint.lower():
         raise WalletStateMismatch(
-            f"dash_wallet_state[{network}] fingerprint/xpub does not match configured material"
+            f"dash_wallet_state[{network}] fingerprint/xpub does not match configured material "
+            f"(stored fp={stored_fp} xpub={_brief(stored_xpub)}; "
+            f"env fp={fingerprint.lower()} xpub={_brief(account_xpub)}). "
+            f"First boot locks the xpub for this network; replace the Mongo row "
+            f"or use the original key material."
         )
     if existing.get("network") != network:
         raise WalletStateMismatch(
