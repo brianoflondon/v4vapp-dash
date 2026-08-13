@@ -137,8 +137,11 @@ class Dashd:
         minconf: int = 0,
         maxconf: int = 9999999,
         addresses: list[str] | None = None,
+        include_unsafe: bool = True,
     ) -> list[dict[str, Any]]:
-        result = await self.wallet("listunspent", minconf, maxconf, addresses or [])
+        result = await self.wallet(
+            "listunspent", minconf, maxconf, addresses or [], include_unsafe
+        )
         if not isinstance(result, list):
             raise DashdError("listunspent returned a non-list")
         return result

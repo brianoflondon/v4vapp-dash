@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -16,6 +17,7 @@ from v4vapp_dash.db.indexes import ensure_indexes
 from v4vapp_dash.db.mongo import Mongo
 from v4vapp_dash.db.wallet_state import ensure_wallet_state
 from v4vapp_dash.keys import load_xpub_material
+from v4vapp_dash.watcher.loop import WatcherState, run_watcher
 
 
 def _rpc_configured(password: str, url: str) -> bool:
@@ -63,9 +65,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
     app.state.dashd = dashd
 
+    watcher = WatcherState()
+    app.state.watcher = watcher
+    stop = asyncio.Event()
+    task: asyncio.Task[None] | None = None
+    if mongo is not None and dashd is not None:
+        task = asyncio.create_task(
+            run_watcher(mongo=mongo, dashd=dashd, settings=settings, state=watcher, stop=stop)
+        )
+
     try:
         yield
     finally:
+        stop.set()
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         if dashd is not None:
             await dashd.aclose()
         if mongo is not None:

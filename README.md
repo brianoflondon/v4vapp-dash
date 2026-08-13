@@ -29,7 +29,7 @@ curl -s -H "X-API-Key: $DASH_API_KEY" -H "Content-Type: application/json" \
   http://127.0.0.1:8088/v1/invoices
 ```
 
-`POST /v1/payouts` returns 501. Payment watching is not implemented yet.
+`POST /v1/payouts` returns 501. A background watcher polls dashd every 10s and applies InstantSend / ChainLock (or `conf_n` on regtest).
 
 ```bash
 curl -s localhost:8088/health

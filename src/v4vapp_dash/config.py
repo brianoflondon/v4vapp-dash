@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     dash_underpay_duffs: int = 50_000
     dash_descriptor_range_end: int = 100_000
     dash_watch_batch: int = 500
+    dash_dust_duffs: int = 5460
     dash_payouts_enabled: bool = False
 
     coingecko_url: str = "https://api.coingecko.com/api/v3/simple/price"

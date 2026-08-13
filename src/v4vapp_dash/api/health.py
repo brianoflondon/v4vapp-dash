@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -7,6 +8,7 @@ from v4vapp_dash.config import get_settings
 from v4vapp_dash.dashd.rpc import Dashd
 from v4vapp_dash.db.mongo import Mongo
 from v4vapp_dash.db.wallet_state import load_wallet_state
+from v4vapp_dash.watcher.loop import WatcherState
 
 router = APIRouter()
 
@@ -19,6 +21,7 @@ async def health(request: Request) -> dict[str, Any]:
     dashd_info: dict[str, Any] | None = None
     mongo: Mongo | None = getattr(request.app.state, "mongo", None)
     dashd: Dashd | None = getattr(request.app.state, "dashd", None)
+    watcher: WatcherState | None = getattr(request.app.state, "watcher", None)
 
     if mongo is not None:
         try:
@@ -52,9 +55,22 @@ async def health(request: Request) -> dict[str, Any]:
         except Exception:
             dashd_info = {"error": True}
 
+    watcher_info: dict[str, Any] | None = None
+    if watcher is not None:
+        age = None
+        if watcher.last_tick_at is not None:
+            age = (datetime.now(UTC) - watcher.last_tick_at).total_seconds()
+        watcher_info = {
+            "last_tick_age_s": age,
+            "open_invoices": watcher.open_invoices,
+            "last_error": watcher.last_error,
+        }
+
     if mongo_ok is False or (dashd_info is not None and dashd_info.get("error")):
         status = "error"
     elif dashd_info is not None and dashd_info.get("initialblockdownload"):
+        status = "degraded"
+    elif watcher is not None and watcher.last_error:
         status = "degraded"
     else:
         status = "ok"
@@ -69,6 +85,8 @@ async def health(request: Request) -> dict[str, Any]:
         body["wallet"] = wallet
     if dashd_info is not None:
         body["dashd"] = dashd_info
+    if watcher_info is not None:
+        body["watcher"] = watcher_info
     return body
 
 
