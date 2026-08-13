@@ -11,6 +11,10 @@ INVOICE_INDEXES = [
     IndexModel([("address", ASCENDING)], name="address", unique=True),
     IndexModel([("state", ASCENDING), ("expires_at", ASCENDING)], name="state_expires"),
     IndexModel([("cust_id", ASCENDING)], name="cust_id"),
+    IndexModel(
+        [("cust_id", ASCENDING), ("state", ASCENDING), ("settled_at", ASCENDING)],
+        name="cust_state_settled",
+    ),
     IndexModel([("created_at", ASCENDING)], name="created_at"),
 ]
 

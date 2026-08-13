@@ -12,6 +12,7 @@ def test_invoice_index_names_and_uniques() -> None:
         "address",
         "state_expires",
         "cust_id",
+        "cust_state_settled",
         "created_at",
     ]
     by_name = {m.document["name"]: m.document for m in INVOICE_INDEXES}

@@ -12,6 +12,7 @@ from v4vapp_dash.config import Settings, default_min_conf, get_settings
 from v4vapp_dash.db.mongo import COL_INVOICES, Mongo
 from v4vapp_dash.db.wallet_state import WalletStateMismatch, allocate_receive_index
 from v4vapp_dash.keys import load_xpub_material
+from v4vapp_dash.limits.check import check_cust_rate_limit
 from v4vapp_dash.models.invoice import (
     DashInvoiceState,
     InvoiceCreate,
@@ -87,6 +88,9 @@ async def create_invoice(
         raise
     except Exception as exc:
         raise ApiError(422, "quote_unavailable", str(exc)) from exc
+
+    if body.cust_id:
+        await check_cust_rate_limit(mongo.db, cust_id=body.cust_id, extra_sats=body.sats)
 
     try:
         index = await allocate_receive_index(mongo.db, settings.dash_network)

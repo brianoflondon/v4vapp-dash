@@ -4,14 +4,23 @@ from fastapi.responses import JSONResponse
 
 
 class ApiError(Exception):
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        extra: dict | None = None,
+    ) -> None:
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.extra = extra or {}
         super().__init__(message)
 
-    def body(self) -> dict[str, dict[str, str]]:
-        return {"error": {"code": self.code, "message": self.message}}
+    def body(self) -> dict:
+        payload: dict = {"error": {"code": self.code, "message": self.message}}
+        payload.update(self.extra)
+        return payload
 
 
 def register_exception_handlers(app: FastAPI) -> None:

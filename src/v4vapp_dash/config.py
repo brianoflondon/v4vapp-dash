@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     coingecko_url: str = "https://api.coingecko.com/api/v3/simple/price"
     coinmarketcap_api_key: str = ""
     watch_fallback_url: str = ""
+    v4v_status_url: str = "https://api.v4v.app/v1"
 
 
 @lru_cache

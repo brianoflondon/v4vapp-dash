@@ -9,7 +9,9 @@ from pymongo.errors import DuplicateKeyError
 
 from v4vapp_dash.config import get_settings
 from v4vapp_dash.db.mongo import COL_INVOICES, COL_WALLET_STATE
+from v4vapp_dash.limits.hive_config import RateWindow
 from v4vapp_dash.main import create_app
+from v4vapp_dash.models.invoice import DashInvoiceState
 from v4vapp_dash.models.quote import Quote
 from v4vapp_dash.quotes.service import quote_for_sats
 
@@ -36,11 +38,15 @@ class _Coll:
                 if not any(self._match(doc, part) for part in value):
                     return False
                 continue
-            if isinstance(value, dict) and ("$gt" in value or "$eq" in value):
+            if isinstance(value, dict):
                 actual = doc.get(key)
                 if "$gt" in value and not (actual is not None and actual > value["$gt"]):
                     return False
+                if "$gte" in value and not (actual is not None and actual >= value["$gte"]):
+                    return False
                 if "$eq" in value and actual != value["$eq"]:
+                    return False
+                if "$in" in value and actual not in value["$in"]:
                     return False
                 continue
             if doc.get(key) != value:
@@ -141,6 +147,14 @@ def invoice_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, _Mongo]
     monkeypatch.setenv("DASH_SETTLE_POLICY", "instantsend_or_chainlock")
     get_settings.cache_clear()
     monkeypatch.setattr("v4vapp_dash.api.v1.invoices.fetch_quote", lambda: _quote())
+    monkeypatch.setattr(
+        "v4vapp_dash.limits.check.fetch_rate_windows",
+        lambda: [
+            RateWindow(4, 600_000),
+            RateWindow(72, 1_200_000),
+            RateWindow(168, 2_000_000),
+        ],
+    )
 
     mongo = _Mongo()
     mongo.db[COL_WALLET_STATE].docs.append(
@@ -260,3 +274,56 @@ def test_payouts_are_501(invoice_client: tuple[TestClient, _Mongo]) -> None:
 def test_quote_math_still_matches_create() -> None:
     priced = quote_for_sats(25_000, _quote())
     assert priced.duffs_quoted == 50_000_000
+
+
+def test_rate_limit_rejects_when_paid_sats_exceed_window(
+    invoice_client: tuple[TestClient, _Mongo],
+) -> None:
+    client, mongo = invoice_client
+    mongo.db[COL_INVOICES].docs.append(
+        {
+            "_id": ObjectId(),
+            "cust_id": "wallet-app-1",
+            "state": DashInvoiceState.SETTLED.value,
+            "sats_requested": 500_000,
+            "sats_credited": 500_000,
+            "settled_at": datetime.now(UTC),
+        }
+    )
+    response = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={
+            "external_id": "hive:test:over",
+            "sats": 150_000,
+            "expires_in_s": 120,
+            "cust_id": "wallet-app-1",
+        },
+    )
+    assert response.status_code == 422, response.text
+    body = response.json()
+    assert body["error"]["code"] == "rate_limit_exceeded"
+    assert "exceeded" in body["error"]["message"]
+    check = body["limit_check"]
+    assert check["cust_id"] == "wallet-app-1"
+    assert check["limit_ok"] is False
+    assert check["periods"]["4"]["sats"] == 650_000
+    assert check["periods"]["4"]["limit_sats"] == 600_000
+    assert check["periods"]["4"]["limit_ok"] is False
+
+
+def test_rate_limit_allows_under_window(
+    invoice_client: tuple[TestClient, _Mongo],
+) -> None:
+    client, _mongo = invoice_client
+    response = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={
+            "external_id": "hive:test:under",
+            "sats": 25_000,
+            "expires_in_s": 120,
+            "cust_id": "wallet-app-2",
+        },
+    )
+    assert response.status_code == 201, response.text
