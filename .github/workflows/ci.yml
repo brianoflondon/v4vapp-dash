@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Sync
+        run: uv sync --dev --frozen
+
+      - name: Ruff
+        run: uv run ruff check src tests
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Unit tests
+        run: uv run pytest tests/unit
+
+      - name: Secret scan
+        run: |
+          set -euo pipefail
+          # Fail if committed files look like live key material.
+          # Placeholders in example.env and docs (xpub…) are allowed.
+          if git grep -nIE 'DASH_MNEMONIC=.+' -- ':!example.env' ':!**/.env.example' ':!docs/**' ; then
+            echo "Possible mnemonic in tree" >&2
+            exit 1
+          fi
+          if git grep -nIE 'DASH_XPRV=.+' -- ':!example.env' ':!**/.env.example' ':!docs/**' ; then
+            echo "Possible xprv in tree" >&2
+            exit 1
+          fi
+          if git grep -nIE 'DASH_XPUB=xpub[A-Za-z0-9]+' -- ':!example.env' ':!**/.env.example' ':!docs/**' ; then
+            echo "Possible raw xpub assignment in tree" >&2
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)\.env$|\.xprv$|\.xpub$' ; then
+            echo "Secret filename staged" >&2
+            exit 1
+          fi

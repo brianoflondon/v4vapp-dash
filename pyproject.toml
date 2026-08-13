@@ -1,0 +1,54 @@
+[project]
+name = "v4vapp-dash"
+version = "0.1.0"
+description = "Private Dash invoice bridge for V4V.app"
+authors = [{ name = "Brian of London", email = "brian@v4v.app" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.27.0",
+    "bip-utils>=2.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[project.scripts]
+derive-xpub = "v4vapp_dash.wallet.derive_xpub:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/v4vapp_dash"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["v4vapp_dash"]
+explicit_package_bases = true
+ignore_missing_imports = true
+warn_unused_ignores = true

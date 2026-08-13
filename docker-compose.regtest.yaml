@@ -1,0 +1,10 @@
+# Overlay for local/regtest only. Does not apply in production.
+services:
+  v4vapp-dash:
+    ports:
+      - "127.0.0.1:8088:8080"
+    environment:
+      DASH_NETWORK: regtest
+      DASH_DOCS_ENABLED: "true"
+      DASH_SETTLE_POLICY: conf_n
+      DASH_MIN_CONF: "1"

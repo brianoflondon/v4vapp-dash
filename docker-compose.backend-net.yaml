@@ -1,0 +1,6 @@
+# Optional overlay: attach to the live backend compose network.
+# Confirm the name with: docker network ls
+networks:
+  v4vapp-dash:
+    name: v4vapp-backend-v2_v4vapp-backend
+    external: true
