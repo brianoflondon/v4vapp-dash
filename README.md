@@ -55,6 +55,14 @@ uv run pytest tests/unit tests/integration
 
 The live integration test is skipped when `rsPytest` is unreachable (GitHub CI).
 
+## dashd
+
+Node RPCs (`getblockchaininfo`) go to `DASH_RPC_URL`. Wallet RPCs go to `DASH_RPC_URL/wallet/watch`.
+
+Yoga (`deploy/dashd`) currently finishes IBD with wallet **disabled**. `getblockchaininfo` works today. Creating the watch-only wallet needs `-disablewallet=0` and a recreate (no resync), plus `DASH_XPUB` + `DASH_MASTER_FINGERPRINT`.
+
+Until those are set, `/health` reports `dashd.synced` / `initialblockdownload` and skips wallet bootstrap.
+
 ## Offline xpub (laptop only)
 
 ```bash

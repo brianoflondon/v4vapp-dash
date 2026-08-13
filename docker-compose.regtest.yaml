@@ -1,5 +1,40 @@
 # Overlay for local/regtest only. Does not apply in production.
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.regtest.yaml up --build
+#
+# dashpay/dashd:23+ entrypoint is /docker-entrypoint.sh — first arg MUST be `dashd`.
+
 services:
+  dashd:
+    image: dashpay/dashd:23.1.8
+    container_name: v4vapp-dashd-regtest
+    command:
+      - dashd
+      - -regtest=1
+      - -server=1
+      - -listen=0
+      - -printtoconsole=1
+      - -txindex=0
+      - -rpcport=9998
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=0.0.0.0/0
+      - -rpcuser=dashrpc
+      - -rpcpassword=regtest
+    ports:
+      - "127.0.0.1:9998:9998"
+    networks:
+      - v4vapp-dash
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "dash-cli -regtest -rpcport=9998 -rpcuser=dashrpc -rpcpassword=regtest getblockchaininfo",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
   v4vapp-dash:
     ports:
       - "127.0.0.1:8088:8080"
@@ -8,3 +43,10 @@ services:
       DASH_DOCS_ENABLED: "true"
       DASH_SETTLE_POLICY: conf_n
       DASH_MIN_CONF: "1"
+      DASH_RPC_URL: http://dashd:9998
+      DASH_RPC_USER: dashrpc
+      DASH_RPC_PASSWORD: regtest
+      DASH_RPC_WALLET: watch
+    depends_on:
+      dashd:
+        condition: service_healthy

@@ -26,7 +26,8 @@ services:
       #   docker compose exec dashd tail -f /home/dash/.dashcore/debug.log
       - -printtoconsole=0
       - -shrinkdebugfile=1
-      - -disablewallet=1
+      # Set to 0 after IBD (or now — no resync) so v4vapp-dash can createwallet watch.
+      - -disablewallet=0
       - -txindex=0
       - -addressindex=0
       - -spentindex=0

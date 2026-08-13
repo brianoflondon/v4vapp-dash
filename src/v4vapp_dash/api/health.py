@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from v4vapp_dash import __version__
 from v4vapp_dash.config import get_settings
+from v4vapp_dash.dashd.rpc import Dashd
 from v4vapp_dash.db.mongo import Mongo
 from v4vapp_dash.db.wallet_state import load_wallet_state
 
@@ -15,7 +16,10 @@ async def health(request: Request) -> dict[str, Any]:
     settings = get_settings()
     mongo_ok: bool | None = None
     wallet: dict[str, Any] | None = None
+    dashd_info: dict[str, Any] | None = None
     mongo: Mongo | None = getattr(request.app.state, "mongo", None)
+    dashd: Dashd | None = getattr(request.app.state, "dashd", None)
+
     if mongo is not None:
         try:
             await mongo.ping()
@@ -32,8 +36,26 @@ async def health(request: Request) -> dict[str, Any]:
     elif settings.mongo_uri:
         mongo_ok = False
 
-    if mongo_ok is False:
+    if dashd is not None:
+        try:
+            info = await dashd.getblockchaininfo()
+            ibd = bool(info.get("initialblockdownload"))
+            dashd_info = {
+                "chain": info.get("chain"),
+                "blocks": info.get("blocks"),
+                "headers": info.get("headers"),
+                "verificationprogress": info.get("verificationprogress"),
+                "initialblockdownload": ibd,
+                "pruned": info.get("pruned"),
+                "synced": not ibd,
+            }
+        except Exception:
+            dashd_info = {"error": True}
+
+    if mongo_ok is False or (dashd_info is not None and dashd_info.get("error")):
         status = "error"
+    elif dashd_info is not None and dashd_info.get("initialblockdownload"):
+        status = "degraded"
     else:
         status = "ok"
 
@@ -45,6 +67,8 @@ async def health(request: Request) -> dict[str, Any]:
     }
     if wallet is not None:
         body["wallet"] = wallet
+    if dashd_info is not None:
+        body["dashd"] = dashd_info
     return body
 
 

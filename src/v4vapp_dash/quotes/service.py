@@ -7,12 +7,11 @@ from typing import Any
 
 import httpx
 
+from v4vapp_dash.amounts import DUFFS_PER_DASH, SATS_PER_BTC, dash_amount_string
 from v4vapp_dash.api.errors import ApiError
 from v4vapp_dash.config import get_settings
 from v4vapp_dash.models.quote import Quote
 
-SATS_PER_BTC = 100_000_000
-DUFFS_PER_DASH = Decimal("100000000")
 CMC_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
 
 _cache: Quote | None = None
@@ -28,15 +27,6 @@ def duffs_from_sats(sats: int, dash_btc: Decimal) -> int:
     sats_per_dash = Decimal(SATS_PER_BTC) * dash_btc
     raw = (Decimal(sats) * DUFFS_PER_DASH) / sats_per_dash
     return int(raw.to_integral_value(rounding=ROUND_CEILING))
-
-
-def dash_amount_string(duffs: int) -> str:
-    return f"{(Decimal(duffs) / DUFFS_PER_DASH):.8f}"
-
-
-def rpc_dash_to_duffs(amount: Any) -> int:
-    """dashd returns DASH as JSON floats — never use float * 1e8."""
-    return int((Decimal(str(amount)) * DUFFS_PER_DASH).to_integral_value())
 
 
 def _now_iso() -> str:

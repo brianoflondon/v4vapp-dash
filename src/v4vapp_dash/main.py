@@ -8,31 +8,64 @@ from v4vapp_dash.api.deps import require_api_key
 from v4vapp_dash.api.errors import register_exception_handlers
 from v4vapp_dash.api.health import router as health_router
 from v4vapp_dash.config import get_settings
+from v4vapp_dash.dashd.bootstrap import bootstrap_watch_wallet
+from v4vapp_dash.dashd.rpc import Dashd
 from v4vapp_dash.db.indexes import ensure_indexes
 from v4vapp_dash.db.mongo import Mongo
 from v4vapp_dash.db.wallet_state import ensure_wallet_state
+from v4vapp_dash.keys import load_xpub_material
+
+
+def _rpc_configured(password: str, url: str) -> bool:
+    if not url or not password or password == "change-me":
+        return False
+    return True
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    material = load_xpub_material(settings)
+
     mongo: Mongo | None = None
     if settings.mongo_uri:
         mongo = Mongo(settings.mongo_uri, settings.mongo_db_name)
         await mongo.ping()
         await ensure_indexes(mongo.db)
-        if settings.dash_xpub and settings.dash_master_fingerprint:
+        if material is not None:
             await ensure_wallet_state(
                 mongo.db,
                 network=settings.dash_network,
-                account_xpub=settings.dash_xpub,
-                fingerprint=settings.dash_master_fingerprint,
+                account_xpub=material.account_xpub,
+                fingerprint=material.master_fingerprint,
                 descriptor_range_end=settings.dash_descriptor_range_end,
             )
     app.state.mongo = mongo
+
+    dashd: Dashd | None = None
+    if _rpc_configured(settings.dash_rpc_password, settings.dash_rpc_url):
+        dashd = Dashd(
+            settings.dash_rpc_url,
+            user=settings.dash_rpc_user,
+            password=settings.dash_rpc_password,
+            wallet=settings.dash_rpc_wallet,
+        )
+        await dashd.getblockchaininfo()
+        if material is not None:
+            await bootstrap_watch_wallet(
+                dashd,
+                network=settings.dash_network,
+                account_xpub=material.account_xpub,
+                fingerprint=material.master_fingerprint,
+                range_end=settings.dash_descriptor_range_end,
+            )
+    app.state.dashd = dashd
+
     try:
         yield
     finally:
+        if dashd is not None:
+            await dashd.aclose()
         if mongo is not None:
             await mongo.close()
 

@@ -3,13 +3,13 @@ from decimal import Decimal
 import httpx
 import pytest
 
+from v4vapp_dash.amounts import rpc_dash_to_duffs
 from v4vapp_dash.api.errors import ApiError
 from v4vapp_dash.quotes.service import (
     duffs_from_sats,
     fetch_quote,
     quote_for_sats,
     reset_quote_cache,
-    rpc_dash_to_duffs,
 )
 
 
