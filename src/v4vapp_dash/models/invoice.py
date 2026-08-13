@@ -18,9 +18,18 @@ class DashInvoiceState(StrEnum):
     CANCELED = "CANCELED"
 
 
+class InvoiceFeesOut(BaseModel):
+    conv_fee_percent: str
+    conv_fee_base_sats: int
+    conv_fee_sats: int
+    routing_fee_sats: int
+    total_fee_sats: int
+    sats_collect: int
+
+
 class InvoiceCreate(BaseModel):
     external_id: str = Field(min_length=1, max_length=128)
-    sats: int = Field(ge=1, le=50_000_000)
+    sats: int = Field(ge=1)
     expires_in_s: int = Field(ge=60, le=86_400)
     cust_id: str | None = None
     memo: str | None = Field(default=None, max_length=300)
@@ -64,8 +73,10 @@ class InvoiceOut(BaseModel):
     uri: str
     network: Network
     sats_requested: int
+    sats_collect: int | None = None
     duffs_quoted: int
     dash_quoted: str
+    fees: InvoiceFeesOut | None = None
     duffs_received: int = 0
     sats_credited: int | None = None
     expires_at: datetime
@@ -107,8 +118,10 @@ def doc_to_out(doc: dict[str, Any]) -> InvoiceOut:
         uri=doc["uri"],
         network=doc["network"],
         sats_requested=int(doc["sats_requested"]),
+        sats_collect=int(doc["sats_collect"]) if doc.get("sats_collect") is not None else None,
         duffs_quoted=int(doc["duffs_quoted"]),
         dash_quoted=doc["dash_quoted"],
+        fees=InvoiceFeesOut.model_validate(doc["fees"]) if doc.get("fees") else None,
         duffs_received=int(doc.get("duffs_received") or 0),
         sats_credited=doc.get("sats_credited"),
         expires_at=doc["expires_at"],

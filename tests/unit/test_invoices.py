@@ -9,7 +9,7 @@ from pymongo.errors import DuplicateKeyError
 
 from v4vapp_dash.config import get_settings
 from v4vapp_dash.db.mongo import COL_INVOICES, COL_WALLET_STATE
-from v4vapp_dash.limits.hive_config import RateWindow
+from v4vapp_dash.limits.hive_config import DEFAULT_CONFIG
 from v4vapp_dash.main import create_app
 from v4vapp_dash.models.invoice import DashInvoiceState
 from v4vapp_dash.models.quote import Quote
@@ -148,12 +148,12 @@ def invoice_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, _Mongo]
     get_settings.cache_clear()
     monkeypatch.setattr("v4vapp_dash.api.v1.invoices.fetch_quote", lambda: _quote())
     monkeypatch.setattr(
+        "v4vapp_dash.api.v1.invoices.fetch_hive_config",
+        lambda: DEFAULT_CONFIG,
+    )
+    monkeypatch.setattr(
         "v4vapp_dash.limits.check.fetch_rate_windows",
-        lambda: [
-            RateWindow(4, 600_000),
-            RateWindow(72, 1_200_000),
-            RateWindow(168, 2_000_000),
-        ],
+        lambda: list(DEFAULT_CONFIG.windows),
     )
 
     mongo = _Mongo()
@@ -192,8 +192,12 @@ def test_create_invoice_returns_y_address_and_quoted_duffs(
     body = response.json()
     assert body["state"] == "OPEN"
     assert body["address"].startswith("y")
-    assert body["duffs_quoted"] == 50_000_000
-    assert body["dash_quoted"] == "0.50000000"
+    # 25000 + ceil/half-up(25000*0.029)+50 + 300 = 25000+725+50+300 = 26075 sats collected
+    assert body["sats_requested"] == 25_000
+    assert body["sats_collect"] == 26_075
+    assert body["fees"]["total_fee_sats"] == 1_075
+    assert body["fees"]["routing_fee_sats"] == 300
+    assert body["duffs_quoted"] == 52_150_000
     assert body["uri"].startswith("dash:y")
     assert body["derivation"]["path"] == "m/44'/1'/0'/0/0"
     assert body["policy"]["settle_policy"] == "instantsend_or_chainlock"
@@ -274,6 +278,17 @@ def test_payouts_are_501(invoice_client: tuple[TestClient, _Mongo]) -> None:
 def test_quote_math_still_matches_create() -> None:
     priced = quote_for_sats(25_000, _quote())
     assert priced.duffs_quoted == 50_000_000
+
+
+def test_rejects_above_hive_maximum(invoice_client: tuple[TestClient, _Mongo]) -> None:
+    client, _mongo = invoice_client
+    response = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={"external_id": "hive:test:max", "sats": 180_001, "expires_in_s": 120},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "amount_too_large"
 
 
 def test_rate_limit_rejects_when_paid_sats_exceed_window(

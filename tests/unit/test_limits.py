@@ -6,7 +6,13 @@ import pytest
 from v4vapp_dash.api.errors import ApiError
 from v4vapp_dash.db.mongo import COL_INVOICES
 from v4vapp_dash.limits.check import check_cust_rate_limit
-from v4vapp_dash.limits.hive_config import RateWindow, fetch_rate_windows, reset_rate_window_cache
+from v4vapp_dash.limits.hive_config import (
+    RateWindow,
+    calculate_invoice_fees,
+    fetch_hive_config,
+    fetch_rate_windows,
+    reset_rate_window_cache,
+)
 from v4vapp_dash.models.invoice import DashInvoiceState
 
 
@@ -71,6 +77,33 @@ def test_fetch_rate_windows_from_v1_payload() -> None:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     windows = fetch_rate_windows(client=client, force=True)
     assert [(w.hours, w.sats) for w in windows] == [(4, 600_000), (72, 1_200_000), (168, 2_000_000)]
+
+
+def test_fetch_hive_config_fees_and_bounds() -> None:
+    reset_rate_window_cache()
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "config": {
+                    "conv_fee_percent": 0.029,
+                    "conv_fee_sats": 50,
+                    "minimum_invoice_payment_sats": 1,
+                    "maximum_invoice_payment_sats": 180000,
+                    "lightning_rate_limits": [{"hours": 4, "sats": 600000}],
+                }
+            },
+        )
+
+    cfg = fetch_hive_config(client=httpx.Client(transport=httpx.MockTransport(handler)), force=True)
+    assert cfg.minimum_invoice_payment_sats == 1
+    assert cfg.maximum_invoice_payment_sats == 180_000
+    fees = calculate_invoice_fees(25_000, cfg)
+    assert fees.conv_fee_sats == 775  # 725 + 50
+    assert fees.routing_fee_sats == 300
+    assert fees.total_fee_sats == 1_075
+    assert fees.sats_collect == 26_075
 
 
 @pytest.mark.asyncio

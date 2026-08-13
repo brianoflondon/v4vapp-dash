@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     coinmarketcap_api_key: str = ""
     watch_fallback_url: str = ""
     v4v_status_url: str = "https://api.v4v.app/v1"
+    dash_routing_fee_sats: int = 300
 
 
 @lru_cache

@@ -13,6 +13,7 @@ from v4vapp_dash.db.mongo import COL_INVOICES, Mongo
 from v4vapp_dash.db.wallet_state import WalletStateMismatch, allocate_receive_index
 from v4vapp_dash.keys import load_xpub_material
 from v4vapp_dash.limits.check import check_cust_rate_limit
+from v4vapp_dash.limits.hive_config import calculate_invoice_fees, fetch_hive_config
 from v4vapp_dash.models.invoice import (
     DashInvoiceState,
     InvoiceCreate,
@@ -81,9 +82,24 @@ async def create_invoice(
             409, "duplicate_external_id", "external_id already used with different params"
         )
 
+    hive = fetch_hive_config()
+    if body.sats < hive.minimum_invoice_payment_sats:
+        raise ApiError(
+            422,
+            "amount_too_small",
+            f"Minimum invoice is {hive.minimum_invoice_payment_sats:,} sats",
+        )
+    if body.sats > hive.maximum_invoice_payment_sats:
+        raise ApiError(
+            422,
+            "amount_too_large",
+            f"Maximum invoice is {hive.maximum_invoice_payment_sats:,} sats",
+        )
+
+    fees = calculate_invoice_fees(body.sats, hive)
     try:
         raw_quote = fetch_quote()
-        priced = quote_for_sats(body.sats, raw_quote)
+        priced = quote_for_sats(fees.sats_collect, raw_quote)
     except ApiError:
         raise
     except Exception as exc:
@@ -118,9 +134,18 @@ async def create_invoice(
         "index": index,
         "derivation": derivation.model_dump(),
         "sats_requested": body.sats,
+        "sats_collect": fees.sats_collect,
         "expires_in_s": body.expires_in_s,
         "duffs_quoted": priced.duffs_quoted,
         "dash_quoted": priced.dash_quoted,
+        "fees": {
+            "conv_fee_percent": fees.conv_fee_percent,
+            "conv_fee_base_sats": fees.conv_fee_base_sats,
+            "conv_fee_sats": fees.conv_fee_sats,
+            "routing_fee_sats": fees.routing_fee_sats,
+            "total_fee_sats": fees.total_fee_sats,
+            "sats_collect": fees.sats_collect,
+        },
         "duffs_received": 0,
         "sats_credited": None,
         "quote": {

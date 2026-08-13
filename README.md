@@ -31,7 +31,9 @@ curl -s -H "X-API-Key: $DASH_API_KEY" -H "Content-Type: application/json" \
 
 `POST /v1/payouts` returns 501. A background watcher polls dashd every 10s and applies InstantSend / ChainLock (or `conf_n` on regtest).
 
-If `cust_id` is set, create checks Hive `lightning_rate_limits` from `GET https://api.v4v.app/v1` against that customer's **paid** (`SETTLED`/`OVERPAID`) sats plus the new request. Over the window → **422** `rate_limit_exceeded` with a `limit_check` body (same windows as backend-v2: 4h/600k, 72h/1.2M, 168h/2M).
+Hive config from `GET https://api.v4v.app/v1` also sets invoice min/max (`minimum_invoice_payment_sats` / `maximum_invoice_payment_sats`, currently 1–180,000) and fees: `conv_fee_percent` × sats + `conv_fee_sats` (50) + a fixed **300** sat routing pad (`DASH_ROUTING_FEE_SATS`). The Dash URI is quoted on that gross `sats_collect`. Credit on settle is still `sats_requested`.
+
+If `cust_id` is set, create checks Hive `lightning_rate_limits` against that customer's **paid** (`SETTLED`/`OVERPAID`) sats plus the new request. Over the window → **422** `rate_limit_exceeded`.
 
 ```bash
 curl -s localhost:8088/health
