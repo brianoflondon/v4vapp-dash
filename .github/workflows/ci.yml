@@ -36,17 +36,22 @@ jobs:
       - name: Secret scan
         run: |
           set -euo pipefail
-          # Fail if committed files look like live key material.
-          # Placeholders in example.env and docs (xpub…) are allowed.
-          if git grep -nIE 'DASH_MNEMONIC=.+' -- ':!example.env' ':!**/.env.example' ':!docs/**' ; then
+          # Do not grep this workflow: the patterns themselves contain DASH_MNEMONIC=.
+          EXCLUDES=(
+            ':!example.env'
+            ':!**/.env.example'
+            ':!docs/**'
+            ':!.github/workflows/**'
+          )
+          if git grep -nIE '^[[:space:]]*DASH_MNEMONIC=[^[:space:]#]+' -- "${EXCLUDES[@]}" ; then
             echo "Possible mnemonic in tree" >&2
             exit 1
           fi
-          if git grep -nIE 'DASH_XPRV=.+' -- ':!example.env' ':!**/.env.example' ':!docs/**' ; then
+          if git grep -nIE '^[[:space:]]*DASH_XPRV=[^[:space:]#]+' -- "${EXCLUDES[@]}" ; then
             echo "Possible xprv in tree" >&2
             exit 1
           fi
-          if git grep -nIE 'DASH_XPUB=xpub[A-Za-z0-9]+' -- ':!example.env' ':!**/.env.example' ':!docs/**' ; then
+          if git grep -nIE '^[[:space:]]*DASH_XPUB=xpub[A-Za-z0-9]+' -- "${EXCLUDES[@]}" ; then
             echo "Possible raw xpub assignment in tree" >&2
             exit 1
           fi
