@@ -21,6 +21,16 @@ uv run uvicorn v4vapp_dash.main:app --reload --port 8088
 
 `GET /health` is open. `/metrics` and `/v1/*` need `X-API-Key`.
 
+Invoices (needs Mongo + `DASH_XPUB` + `DASH_MASTER_FINGERPRINT`; quotes hit CoinGecko):
+
+```bash
+curl -s -H "X-API-Key: $DASH_API_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id":"dev:1","sats":25000,"expires_in_s":900}' \
+  http://127.0.0.1:8088/v1/invoices
+```
+
+`POST /v1/payouts` returns 501. Payment watching is not implemented yet.
+
 ```bash
 curl -s localhost:8088/health
 curl -s -H "X-API-Key: change-me-long-random" localhost:8088/metrics

@@ -7,6 +7,8 @@ from v4vapp_dash import __version__
 from v4vapp_dash.api.deps import require_api_key
 from v4vapp_dash.api.errors import register_exception_handlers
 from v4vapp_dash.api.health import router as health_router
+from v4vapp_dash.api.v1.invoices import router as invoices_router
+from v4vapp_dash.api.v1.payouts import router as payouts_router
 from v4vapp_dash.config import get_settings
 from v4vapp_dash.dashd.bootstrap import bootstrap_watch_wallet
 from v4vapp_dash.dashd.rpc import Dashd
@@ -82,6 +84,8 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
     app.include_router(health_router)
+    app.include_router(invoices_router)
+    app.include_router(payouts_router)
 
     @app.get("/metrics")
     async def metrics(_key: str = Depends(require_api_key)) -> dict[str, str]:
