@@ -38,6 +38,23 @@ Local port 8088:
 docker compose -f docker-compose.yaml -f docker-compose.regtest.yaml up --build
 ```
 
+## Mongo
+
+Shares the backend test database `v4vapp-dev` on replica set `rsPytest` (`mongo-pytest-local` on dot). That replica set has **no auth**. Connection strings match backend YAML:
+
+| Where this process runs | `MONGO_URI` (from backend config) |
+|---|---|
+| Host on dot (`devhive.config.yaml`) | `mongodb://dot:37017/v4vapp-dev?replicaSet=rsPytest` |
+| Other Docker stack (`devdocker.config.yaml`) | `mongodb://dot.tail400e5.ts.net:37017/v4vapp-dev?replicaSet=rsPytest` |
+
+Startup creates `dash_invoices`, `dash_wallet_state`, `dash_payouts` and their indexes. It does not write `ledger` / `invoices`. Wallet state is one document per `DASH_NETWORK`; boot aborts if the stored xpub/fingerprint disagrees with env.
+
+```bash
+uv run pytest tests/unit tests/integration
+```
+
+The live integration test is skipped when `rsPytest` is unreachable (GitHub CI).
+
 ## Offline xpub (laptop only)
 
 ```bash

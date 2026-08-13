@@ -12,6 +12,7 @@ def test_health_is_open() -> None:
     assert body["status"] == "ok"
     assert body["version"] == __version__
     assert body["network"] == "regtest"
+    assert body["mongo"] is None
 
 
 def test_root_is_open() -> None:

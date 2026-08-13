@@ -12,6 +12,9 @@ def _test_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASH_DOCS_ENABLED", "true")
     monkeypatch.setenv("DASH_RPC_PASSWORD", "")
     monkeypatch.setenv("COINMARKETCAP_API_KEY", "")
+    monkeypatch.setenv("MONGO_URI", "")
+    monkeypatch.setenv("DASH_XPUB", "")
+    monkeypatch.setenv("DASH_MASTER_FINGERPRINT", "")
     get_settings.cache_clear()
     reset_quote_cache()
     yield
