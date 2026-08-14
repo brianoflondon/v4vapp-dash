@@ -3,6 +3,7 @@ import logging
 import pytest
 
 from v4vapp_dash.config import get_settings
+from v4vapp_dash.db.wallet_state import _brief
 from v4vapp_dash.logging.redact import REDACTED, SecretRedactFilter
 
 XPUB = (
@@ -65,17 +66,34 @@ def test_redacts_wif_shaped_string() -> None:
 
 
 def test_token_only_xpub_keeps_wallet_state_sentence() -> None:
+    brief = _brief(XPUB)
     msg = (
         f"dash_wallet_state[regtest] fingerprint/xpub does not match configured material "
-        f"(stored xpub={XPUB}; env xpub={XPUB}). First boot locks the xpub for this network"
+        f"(stored xpub={brief}; env xpub={brief}). First boot locks the xpub for this network"
     )
     record = _record(msg)
     SecretRedactFilter().filter(record)
     text = record.getMessage()
+    assert brief not in text
     assert XPUB not in text
     assert "dash_wallet_state[regtest]" in text
     assert "First boot locks the xpub for this network" in text
     assert REDACTED in text
+
+
+def test_password_equal_to_network_does_not_redact_regtest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    long_password = "long-unique-api-key-value"
+    monkeypatch.setenv("DASH_RPC_PASSWORD", "regtest")
+    monkeypatch.setenv("DASH_NETWORK", "regtest")
+    monkeypatch.setenv("DASH_API_KEY", long_password)
+    get_settings.cache_clear()
+    record = _record("rpc %s", (long_password,), network="regtest")
+    SecretRedactFilter().filter(record)
+    assert record.network == "regtest"
+    assert record.getMessage() == f"rpc {REDACTED}"
+    assert long_password not in record.getMessage()
 
 
 def test_extra_secret_keys_redacted_invoice_id_untouched() -> None:

@@ -1,9 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, BeforeValidator, Field
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Network = Literal["mainnet", "testnet", "regtest"]
 SettlePolicy = Literal["instantsend_or_chainlock", "conf_n"]
@@ -16,6 +16,15 @@ class LoggingSettings(BaseModel):
     log_folder: Path = Path("logs")
     rotation_folder: bool = True
     log_levels: dict[str, str] = Field(default_factory=dict)
+
+
+def _coerce_logging(value: object) -> LoggingSettings:
+    # LOGGING=debug is not a dash knob (use LOGGING__CONSOLE_LOG_LEVEL).
+    if isinstance(value, LoggingSettings):
+        return value
+    if isinstance(value, dict):
+        return LoggingSettings.model_validate(value)
+    return LoggingSettings()
 
 
 class Settings(BaseSettings):
@@ -64,7 +73,9 @@ class Settings(BaseSettings):
     v4v_status_url: str = "https://api.v4v.app/v1"
     dash_routing_fee_sats: int = 300
 
-    logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    logging: Annotated[LoggingSettings, NoDecode, BeforeValidator(_coerce_logging)] = Field(
+        default_factory=LoggingSettings
+    )
 
 
 @lru_cache

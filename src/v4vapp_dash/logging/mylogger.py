@@ -1,5 +1,3 @@
-# Source: v4vapp-backend-v2/src/v4vapp_backend_v2/config/mylogger.py (2026-08-14)
-
 import datetime as dt
 import json
 import logging
@@ -138,15 +136,17 @@ class MyJSONFormatter(logging.Formatter):
             if key not in LOG_RECORD_BUILTIN_ATTRS:
                 message[key] = val
 
-        # Move human_time to the desired position
         if "human_time" in message:
             human_time_value = message.pop("human_time")
-            # Insert human_time after level
             new_message = OrderedDict()
+            inserted = False
             for k, v in message.items():
                 new_message[k] = v
                 if k == "level":
                     new_message["human_time"] = human_time_value
+                    inserted = True
+            if not inserted:
+                new_message["human_time"] = human_time_value
             message = new_message
         return message
 
@@ -171,27 +171,12 @@ IGNORE_REPORT_FIELDS = LOG_RECORD_BUILTIN_ATTRS | {
 
 
 def _json_default(o):
-    """JSON default handler for structured logs.
-
-    Handles Decimal, bson.Decimal128, and fallbacks safely without raising
-    decimal.InvalidOperation or OverflowError for pathological inputs.
-
-    Strategy:
-      - If value is bson.Decimal128, convert to Decimal using .to_decimal()
-      - If value is Decimal:
-          - If NaN or infinite -> return str(o)
-          - Try safe float conversion and round to 11 places
-          - On conversion error -> fallback to string
-      - Otherwise -> fallback to str(o)
-    """
-
-    # Lazy import so module doesn't require pymongo/bson unless used
+    """Decimal / Decimal128 without raising InvalidOperation or OverflowError."""
     try:
         from bson.decimal128 import Decimal128  # type: ignore
     except Exception:  # pragma: no cover - environment may not have bson
         Decimal128 = None
 
-    # Support bson.Decimal128 (convert to Decimal then handle)
     if Decimal128 is not None and isinstance(o, Decimal128):
         try:
             o = o.to_decimal()
@@ -200,22 +185,17 @@ def _json_default(o):
 
     if isinstance(o, Decimal):
         try:
-            # Preserve special values as strings so json doesn't try to use NaN
             if o.is_nan() or o.is_infinite():
                 return str(o)
-            # Try converting to float; catch errors and detect overflow to inf
             f = float(o)
             import math
 
-            # If conversion produced an infinite float (too large), return string
             if not math.isfinite(f):
                 return str(o)
         except (InvalidOperation, OverflowError):
             return str(o)
-        # Safe to return rounded float
         return round(f, 11)
 
-    # Final fallback
     return str(o)
 
 

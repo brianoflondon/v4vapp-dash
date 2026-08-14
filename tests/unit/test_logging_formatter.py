@@ -22,6 +22,7 @@ def test_format_basic_log_record() -> None:
 
     assert log_dict["message"] == "Test message"
     assert "timestamp" in log_dict
+    assert "human_time" in log_dict
 
 
 def test_format_log_record_with_exception() -> None:

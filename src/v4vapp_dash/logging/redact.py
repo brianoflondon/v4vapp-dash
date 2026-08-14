@@ -8,6 +8,9 @@ from v4vapp_dash.logging.mylogger import LOG_RECORD_BUILTIN_ATTRS
 
 REDACTED = "***"
 
+# Substring-replace of shorter values stars ordinary words (e.g. password=regtest).
+_MIN_KNOWN_SECRET_LEN = 8
+
 _SECRET_SETTING_FIELDS = (
     "dash_api_key",
     "dash_api_key_prev",
@@ -21,20 +24,60 @@ _EXTRA_KEY_RE = re.compile(
     r"(?i)(password|secret|token|api_key|authorization|mnemonic|xprv|xpub|seed|wif|mongo_uri|rpc_password)"
 )
 
-# Full extended-key payloads (xpub/tpub/…) and WIF-shaped strings.
 _XPUB_RE = re.compile(r"(?:xprv|xpub|tpub|tprv|ypub|yprv|zpub|zprv)[1-9A-HJ-NP-Za-km-z]{20,}")
+# wallet_state._brief: prefix12 + ellipsis + suffix6 + (len)
+_BRIEF_XPUB_RE = re.compile(
+    r"(?:xprv|xpub|tpub|tprv|ypub|yprv|zpub|zprv)[1-9A-HJ-NP-Za-km-z]+…[1-9A-HJ-NP-Za-km-z]+\(\d+\)"
+)
 _WIF_RE = re.compile(r"[5KL][1-9A-HJ-NP-Za-km-z]{50,}")
 _MONGO_URI_RE = re.compile(r"mongodb(?:\+srv)?://[^\s/:]+:[^\s/@]+@[^\s]+")
+
+
+def _brief_form(text: str) -> str | None:
+    if len(text) <= 20:
+        return None
+    return f"{text[:12]}…{text[-6:]}({len(text)})"
+
+
+def _non_secret_strings(settings: Any) -> set[str]:
+    out: set[str] = set()
+    dump = settings.model_dump() if hasattr(settings, "model_dump") else {}
+
+    def walk(node: Any, key: str) -> None:
+        if isinstance(node, dict):
+            for child_key, child in node.items():
+                walk(child, str(child_key))
+            return
+        if key in _SECRET_SETTING_FIELDS:
+            return
+        if isinstance(node, str) and node:
+            out.add(node)
+        elif hasattr(node, "__fspath__"):
+            path_text = str(node)
+            if path_text:
+                out.add(path_text)
+
+    walk(dump, "")
+    return out
 
 
 def _known_secret_values(settings: Any) -> tuple[str, ...]:
     if settings is None:
         return ()
+    collisions = _non_secret_strings(settings)
     values: list[str] = []
     for field in _SECRET_SETTING_FIELDS:
         val = getattr(settings, field, None)
-        if isinstance(val, str) and val:
-            values.append(val)
+        if not isinstance(val, str) or not val:
+            continue
+        if len(val) < _MIN_KNOWN_SECRET_LEN:
+            continue
+        if val in collisions:
+            continue
+        values.append(val)
+        brief = _brief_form(val)
+        if brief:
+            values.append(brief)
     return tuple(values)
 
 
@@ -43,6 +86,7 @@ def _redact_text(text: str, secrets: tuple[str, ...]) -> str:
         if secret:
             text = text.replace(secret, REDACTED)
     text = _XPUB_RE.sub(REDACTED, text)
+    text = _BRIEF_XPUB_RE.sub(REDACTED, text)
     text = _WIF_RE.sub(REDACTED, text)
     text = _MONGO_URI_RE.sub(REDACTED, text)
     return text
@@ -82,7 +126,7 @@ def _redact_record(record: logging.LogRecord, secrets: tuple[str, ...]) -> None:
 
 
 class SecretRedactFilter(logging.Filter):
-    """Defense-in-depth redaction. Reads current Settings inside filter(), not __init__."""
+    """Do not snapshot secrets in __init__: tests clear get_settings() between records."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
