@@ -13,10 +13,20 @@ Python 3.12, FastAPI, `bip_utils` for BIP44 (coin type 5 / testnet 1), later `da
 ## Local
 
 ```bash
-cp example.env .env          # placeholders only — never commit .env
+cp example.env .env          # secrets only — never commit .env
 uv sync --dev
 uv run pytest tests/unit
+# env-only (DASH_CONFIG unset). Reload is CLI uvicorn only.
 uv run uvicorn v4vapp_dash.main:app --reload --port 8088
+```
+
+`python -m v4vapp_dash` has no `--reload`. Optional YAML after creating the local file:
+
+```bash
+cp tests/data/config/sample.config.yaml config/sample.config.yaml
+DASH_CONFIG=config/sample.config.yaml uv run uvicorn v4vapp_dash.main:app --reload --port 8088
+# or without reload:
+uv run python -m v4vapp_dash --config config/sample.config.yaml
 ```
 
 `GET /health` is open. `/metrics` and `/v1/*` need `X-API-Key`.
@@ -40,7 +50,9 @@ curl -s localhost:8088/health
 curl -s -H "X-API-Key: change-me-long-random" localhost:8088/metrics
 ```
 
-Docker (no host ports):
+## Docker
+
+No host ports. The image starts `python -m v4vapp_dash` (env-only; Uvicorn access logs silenced). Compose bind-mounts `./logs:/app/logs` so `logs/v4vapp_dash.jsonl` survives restarts.
 
 ```bash
 docker compose up -d --build
@@ -51,6 +63,22 @@ Local port 8088:
 ```bash
 docker compose -f docker-compose.yaml -f docker-compose.regtest.yaml up --build
 ```
+
+YAML is optional. After `cp tests/data/config/sample.config.yaml config/sample.config.yaml`, uncomment the sample mount and `DASH_CONFIG` in `docker-compose.yaml`. Do not set `DASH_CONFIG` without that mount.
+
+## Config
+
+Structure may live in a local YAML (`--config` / `DASH_CONFIG`). Secrets stay in `.env`, Compose `environment:`, or a secret file. Existing `DASH_*` and `MONGO_*` env names are unchanged and always win over YAML.
+
+`DASH_CONFIG` (alias `V4VAPP_DASH_CONFIG`) is a three-way switch:
+
+| Value | Behavior |
+|---|---|
+| unset | Env-only. Default boot, tests, CLI uvicorn. |
+| empty / `none` / `-` | Env-only. Tests set `none`. |
+| any other string | Load that file (`config/` prefix if not absolute). Missing file is a boot error. |
+
+Do not put `api_key`, `rpc_password`, `xpub`, `mnemonic`, or `mongo.uri` in YAML — use `*_env_var` / `*_file`. `config/sample.config.yaml` and `config/dev.config.yaml` are gitignored. The schema contract in git is `tests/data/config/sample.config.yaml`.
 
 ## Mongo
 
@@ -88,7 +116,7 @@ Put that JSON in `secrets/dash_xpub.json` (gitignored). Never put the mnemonic o
 
 ## Secrets
 
-Git ignores `.env`, `secrets/*`, `*.xprv`, `*.xpub`. CI fails if those filenames or live `DASH_XPUB=xpub…` assignments appear. `example.env` and `deploy/dashd/.env.example` are placeholders only.
+Git ignores `.env`, `secrets/*`, `*.xprv`, `*.xpub`, and local operator YAML (`config/sample.config.yaml`, `config/dev.config.yaml`). CI fails if those filenames, live `DASH_XPUB=xpub…` assignments, or plaintext secret keys in committed YAML appear. `example.env` and `deploy/dashd/.env.example` are placeholders only.
 
 A pruned Dash node for yoga lives in [`deploy/dashd/`](deploy/dashd/) — copy that folder, use `.env.example`, do not commit `.env`.
 

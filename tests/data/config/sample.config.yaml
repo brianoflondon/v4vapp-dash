@@ -1,0 +1,66 @@
+# config/sample.config.yaml  (gitignored — copy from tests/data/config/sample.config.yaml)
+# Non-secret defaults. Secrets via *_env_var / process env / .env.
+#   python -m v4vapp_dash --config config/sample.config.yaml
+version: "0.1.0"
+
+server:
+  bind: "0.0.0.0"
+  port: 8080
+  docs_enabled: false
+
+dash:
+  network: regtest                         # mainnet | testnet | regtest
+  api_key_env_var: DASH_API_KEY
+  api_key_prev_env_var: DASH_API_KEY_PREV
+
+mongo:
+  uri_env_var: MONGO_URI
+  db_name: v4vapp-dev
+
+dashd:
+  rpc_url: http://dashd:9998
+  rpc_wallet: watch
+  rpc_user: dashrpc
+  rpc_password_env_var: DASH_RPC_PASSWORD
+
+wallet:
+  xpub_file: ""                            # prod: /run/secrets/dash_xpub (JSON from derive_xpub)
+  xpub_env_var: DASH_XPUB                  # alternative to file
+  master_fingerprint_env_var: DASH_MASTER_FINGERPRINT
+  mnemonic_file: ""
+  descriptor_range_end: 100000
+
+watcher:
+  poll_interval_s: 10
+  settle_policy: conf_n                    # instantsend_or_chainlock | conf_n
+  min_conf: 1
+  settle_grace_s: 3600
+  underpay_bps: 100
+  underpay_duffs: 50000
+  watch_batch: 500
+  dust_duffs: 5460
+
+payouts:
+  enabled: false
+
+quotes:
+  coingecko_url: https://api.coingecko.com/api/v3/simple/price
+  coinmarketcap_api_key_env_var: COINMARKETCAP_API_KEY
+  watch_fallback_url: ""
+  v4v_status_url: https://api.v4v.app/v1
+  routing_fee_sats: 300
+
+logging:
+  log_config_file: 2-stderr-json-file.json
+  default_log_level: DEBUG
+  console_log_level: INFO
+  log_folder: logs
+  rotation_folder: true
+  log_levels:
+    asyncio: WARNING
+    httpcore: WARNING
+    httpx: WARNING
+    pymongo: WARNING
+    uvicorn: WARNING
+    uvicorn.error: WARNING
+    uvicorn.access: WARNING

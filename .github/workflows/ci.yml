@@ -59,3 +59,12 @@ jobs:
             echo "Secret filename staged" >&2
             exit 1
           fi
+          # Plaintext secret keys in committed YAML. Do not match *_env_var / *_file.
+          if git grep -nIE '^[[:space:]]*(api_key|rpc_password|password|xpub|mnemonic|mongo_uri)[[:space:]]*:' -- '*.yaml' '*.yml' ':!docs/**' ':!.github/workflows/**' ; then
+            echo "Possible plaintext secret assignment in YAML" >&2
+            exit 1
+          fi
+          if git grep -nIE 'mongodb://[^:]+:[^@]+@' -- '*.yaml' '*.yml' ':!docs/**' ':!.github/workflows/**' ; then
+            echo "Possible Mongo URI with credentials in YAML" >&2
+            exit 1
+          fi

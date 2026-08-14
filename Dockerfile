@@ -20,4 +20,4 @@ COPY config/logging /app/config/logging
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8080
-CMD ["uvicorn", "v4vapp_dash.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "v4vapp_dash"]

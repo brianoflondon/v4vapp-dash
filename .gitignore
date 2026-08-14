@@ -38,3 +38,7 @@ htmlcov/
 logs/
 *.jsonl
 dashd-data/
+
+# Local operator YAML (schema contract is tests/data/config/sample.config.yaml)
+config/sample.config.yaml
+config/dev.config.yaml

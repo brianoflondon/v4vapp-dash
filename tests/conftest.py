@@ -8,6 +8,7 @@ from v4vapp_dash.quotes.service import reset_quote_cache
 
 @pytest.fixture(autouse=True)
 def _test_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DASH_CONFIG", "none")
     monkeypatch.setenv("DASH_API_KEY", "test-api-key")
     monkeypatch.setenv("DASH_API_KEY_PREV", "test-api-key-prev")
     monkeypatch.setenv("DASH_NETWORK", "regtest")
