@@ -33,8 +33,8 @@ def _nest(dotted: str, value: object) -> dict:
 
 def test_load_sample_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASH_CONFIG", str(SAMPLE))
-    get_settings.cache_clear()
-    settings = get_settings()
+    # _env_file=None: developer .env must not override fixture values
+    settings = Settings(_env_file=None)
     assert settings.dash_bind == "0.0.0.0"
     assert settings.dash_port == 8080
     assert settings.dash_network == "regtest"
@@ -88,9 +88,8 @@ def test_forbidden_yaml_path_raises(
 ) -> None:
     path = _write_yaml(tmp_path, _nest(forbidden, ""))
     monkeypatch.setenv("DASH_CONFIG", str(path))
-    get_settings.cache_clear()
     with pytest.raises(ValueError, match=forbidden):
-        Settings()
+        Settings(_env_file=None)
 
 
 def test_allowed_env_var_and_file_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,8 +101,7 @@ def test_allowed_env_var_and_file_keys(tmp_path: Path, monkeypatch: pytest.Monke
         },
     )
     monkeypatch.setenv("DASH_CONFIG", str(path))
-    get_settings.cache_clear()
-    Settings()
+    Settings(_env_file=None)
 
 
 def test_env_var_resolves_from_process_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -122,31 +120,27 @@ def test_dash_config_empty_or_none_skips_yaml(
     monkeypatch.setenv("DASH_CONFIG", value)
     # leftover file must not be auto-loaded
     assert leftover.is_file()
-    get_settings.cache_clear()
-    assert get_settings().dash_port == 8080
+    assert Settings(_env_file=None).dash_port == 8080
 
 
 def test_dash_config_unset_skips_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DASH_CONFIG", raising=False)
     monkeypatch.delenv("V4VAPP_DASH_CONFIG", raising=False)
-    get_settings.cache_clear()
-    settings = get_settings()
+    settings = Settings(_env_file=None)
     assert settings.dash_port == 8080
     assert settings.logging.log_levels == {}
 
 
 def test_missing_config_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASH_CONFIG", "does-not-exist.yaml")
-    get_settings.cache_clear()
     with pytest.raises(FileNotFoundError, match="does-not-exist.yaml"):
-        Settings()
+        Settings(_env_file=None)
 
 
 def test_v4vapp_dash_config_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DASH_CONFIG", raising=False)
     monkeypatch.setenv("V4VAPP_DASH_CONFIG", str(SAMPLE))
-    get_settings.cache_clear()
-    assert get_settings().logging.log_levels["uvicorn"] == "WARNING"
+    assert Settings(_env_file=None).logging.log_levels["uvicorn"] == "WARNING"
 
 
 def test_get_field_value_stub() -> None:
