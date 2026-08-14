@@ -1263,7 +1263,7 @@ Simplest possible receive path.
 
 The structured-logs half of PR 9 (JSON logs to stdout) is superseded by the [JSON logging + YAML config](design-json-logging-and-yaml-config.md) side project; JSON is written to `logs/*.jsonl`, not stdout.
 
-JSON logs to stdout (Docker json-file rotation, matching api-ext). Fields:
+Field names (mapped onto JSONL extras; see that design for `timestamp` / `message` / `duffs_received`):
 
 ```
 ts, level, event, invoice_id, external_id, address, state, duffs, txid, err

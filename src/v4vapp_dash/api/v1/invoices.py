@@ -66,6 +66,9 @@ async def create_invoice(
     response: Response,
     _key: str = Depends(require_api_key),
 ) -> InvoiceOut:
+    request.state.external_id = body.external_id
+    if body.cust_id is not None:
+        request.state.cust_id = body.cust_id
     settings = get_settings()
     mongo = _mongo(request)
     material = _material_or_503(settings)

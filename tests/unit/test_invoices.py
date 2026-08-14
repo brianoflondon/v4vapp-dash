@@ -345,6 +345,10 @@ def test_rate_limit_allows_under_window(
     assert response.status_code == 201, response.text
 
 
+def _request_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "v4vapp_dash" and r.getMessage() == "request"]
+
+
 def test_get_invoice_request_is_not_info(
     invoice_client: tuple[TestClient, _Mongo], caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -356,16 +360,56 @@ def test_get_invoice_request_is_not_info(
     )
     assert created.status_code == 201
     invoice_id = created.json()["invoice_id"]
+    path = f"/v1/invoices/{invoice_id}"
     caplog.set_level(logging.DEBUG, logger="v4vapp_dash")
     caplog.clear()
-    response = client.get(f"/v1/invoices/{invoice_id}", headers=HEADERS)
+    response = client.get(path, headers=HEADERS)
     assert response.status_code == 200
-    info = [
-        r
-        for r in caplog.records
-        if r.name == "v4vapp_dash" and r.getMessage() == "request" and r.levelno >= logging.INFO
-    ]
-    assert info == []
+    reqs = _request_records(caplog)
+    assert [r for r in reqs if r.levelno >= logging.INFO] == []
+    assert any(r.levelno == logging.DEBUG and getattr(r, "path", None) == path for r in reqs)
+
+
+def test_get_by_external_request_is_not_info(
+    invoice_client: tuple[TestClient, _Mongo], caplog: pytest.LogCaptureFixture
+) -> None:
+    client, _mongo = invoice_client
+    created = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={"external_id": "hive:log:ext", "sats": 1000, "expires_in_s": 120},
+    )
+    assert created.status_code == 201
+    path = "/v1/invoices/by-external/hive:log:ext"
+    caplog.set_level(logging.DEBUG, logger="v4vapp_dash")
+    caplog.clear()
+    response = client.get(path, headers=HEADERS)
+    assert response.status_code == 200
+    reqs = _request_records(caplog)
+    assert [r for r in reqs if r.levelno >= logging.INFO] == []
+    assert any(r.levelno == logging.DEBUG and getattr(r, "path", None) == path for r in reqs)
+
+
+def test_list_invoices_request_is_info(
+    invoice_client: tuple[TestClient, _Mongo], caplog: pytest.LogCaptureFixture
+) -> None:
+    client, _mongo = invoice_client
+    created = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={"external_id": "hive:log:list", "sats": 1000, "expires_in_s": 120},
+    )
+    assert created.status_code == 201
+    caplog.set_level(logging.INFO, logger="v4vapp_dash")
+    caplog.clear()
+    response = client.get("/v1/invoices", headers=HEADERS)
+    assert response.status_code == 200
+    assert any(
+        r.levelno == logging.INFO
+        and getattr(r, "path", None) == "/v1/invoices"
+        and getattr(r, "status", None) == 200
+        for r in _request_records(caplog)
+    )
 
 
 def test_post_create_emits_info_request(
@@ -385,21 +429,27 @@ def test_post_create_emits_info_request(
         },
     )
     assert response.status_code == 201
-    reqs = [
-        r for r in caplog.records if r.name == "v4vapp_dash" and r.getMessage() == "request"
-    ]
-    assert any(
-        r.levelno == logging.INFO
+    invoice_id = response.json()["invoice_id"]
+    reqs = _request_records(caplog)
+    access = [
+        r
+        for r in reqs
+        if r.levelno == logging.INFO
         and getattr(r, "status", None) == 201
         and getattr(r, "path", None) == "/v1/invoices"
         and getattr(r, "method", None) == "POST"
-        for r in reqs
-    )
+    ]
+    assert access
+    rec = access[-1]
+    assert rec.invoice_id == invoice_id
+    assert rec.external_id == "hive:log:create"
+    assert rec.cust_id == "alice"
+    assert not hasattr(rec, "address")
     created = [r for r in caplog.records if r.getMessage() == "invoice created"]
     assert created
     rec = created[-1]
     assert rec.levelno == logging.INFO
-    assert rec.invoice_id == response.json()["invoice_id"]
+    assert rec.invoice_id == invoice_id
     assert rec.external_id == "hive:log:create"
     assert rec.cust_id == "alice"
     assert rec.sats == 25_000
