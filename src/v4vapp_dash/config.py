@@ -1,9 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import BaseModel, BeforeValidator, Field
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 Network = Literal["mainnet", "testnet", "regtest"]
 SettlePolicy = Literal["instantsend_or_chainlock", "conf_n"]
@@ -18,13 +18,27 @@ class LoggingSettings(BaseModel):
     log_levels: dict[str, str] = Field(default_factory=dict)
 
 
-def _coerce_logging(value: object) -> LoggingSettings:
-    # LOGGING=debug is not a dash knob (use LOGGING__CONSOLE_LOG_LEVEL).
-    if isinstance(value, LoggingSettings):
-        return value
-    if isinstance(value, dict):
-        return LoggingSettings.model_validate(value)
-    return LoggingSettings()
+def _is_non_mapping_logging(value: object) -> bool:
+    if value is None or isinstance(value, dict):
+        return False
+    if isinstance(value, str):
+        return not value.strip().startswith(("{", "["))
+    return True
+
+
+def _env_without_scalar_logging(
+    source: PydanticBaseSettingsSource,
+) -> PydanticBaseSettingsSource:
+    # Leftover LOGGING=debug is not a dash knob; drop it so LOGGING__* still apply.
+    original = source.prepare_field_value
+
+    def prepare_field_value(field_name, field, value, value_is_complex):
+        if field_name == "logging" and _is_non_mapping_logging(value):
+            value = None
+        return original(field_name, field, value, value_is_complex)
+
+    source.prepare_field_value = prepare_field_value  # type: ignore[method-assign]
+    return source
 
 
 class Settings(BaseSettings):
@@ -73,9 +87,23 @@ class Settings(BaseSettings):
     v4v_status_url: str = "https://api.v4v.app/v1"
     dash_routing_fee_sats: int = 300
 
-    logging: Annotated[LoggingSettings, NoDecode, BeforeValidator(_coerce_logging)] = Field(
-        default_factory=LoggingSettings
-    )
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            _env_without_scalar_logging(env_settings),
+            _env_without_scalar_logging(dotenv_settings),
+            file_secret_settings,
+        )
 
 
 @lru_cache

@@ -81,3 +81,10 @@ def test_scalar_logging_env_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
     settings = Settings()
     assert settings.logging.console_log_level == "WARNING"
+
+    monkeypatch.setenv("LOGGING", "debug")
+    monkeypatch.setenv("LOGGING__CONSOLE_LOG_LEVEL", "ERROR")
+    monkeypatch.setenv("LOGGING__DEFAULT_LOG_LEVEL", "WARNING")
+    settings = Settings()
+    assert settings.logging.console_log_level == "ERROR"
+    assert settings.logging.default_log_level == "WARNING"
