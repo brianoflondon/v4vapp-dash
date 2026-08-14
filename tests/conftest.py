@@ -2,6 +2,7 @@ import pytest
 
 from v4vapp_dash.config import get_settings
 from v4vapp_dash.limits.hive_config import reset_rate_window_cache
+from v4vapp_dash.logging.setup import reset_logging
 from v4vapp_dash.quotes.service import reset_quote_cache
 
 
@@ -19,7 +20,9 @@ def _test_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
     reset_quote_cache()
     reset_rate_window_cache()
+    reset_logging()
     yield
+    reset_logging()
     get_settings.cache_clear()
     reset_quote_cache()
     reset_rate_window_cache()

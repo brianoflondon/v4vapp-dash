@@ -15,6 +15,7 @@ FROM python:3.12-slim
 WORKDIR /app/
 COPY --from=builder /app /app
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
+COPY config/logging /app/config/logging
 
 ENV PATH="/app/.venv/bin:$PATH"
 

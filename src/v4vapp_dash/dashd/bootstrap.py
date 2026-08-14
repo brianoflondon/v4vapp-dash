@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from v4vapp_dash.config import Network
 from v4vapp_dash.dashd.rpc import Dashd, WalletDisabled
+from v4vapp_dash.logging import logger
 from v4vapp_dash.wallet.descriptors import (
     checksummed_descriptor,
     import_request,
     raw_descriptor,
 )
-
-logger = logging.getLogger("v4vapp_dash")
 
 
 async def bootstrap_watch_wallet(

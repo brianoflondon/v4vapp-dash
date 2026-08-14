@@ -1,10 +1,21 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Network = Literal["mainnet", "testnet", "regtest"]
 SettlePolicy = Literal["instantsend_or_chainlock", "conf_n"]
+
+
+class LoggingSettings(BaseModel):
+    log_config_file: str = "2-stderr-json-file.json"
+    default_log_level: str = "DEBUG"
+    console_log_level: str = "INFO"
+    log_folder: Path = Path("logs")
+    rotation_folder: bool = True
+    log_levels: dict[str, str] = Field(default_factory=dict)
 
 
 class Settings(BaseSettings):
@@ -13,6 +24,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        env_nested_delimiter="__",
     )
 
     dash_network: Network = "regtest"
@@ -51,6 +63,8 @@ class Settings(BaseSettings):
     watch_fallback_url: str = ""
     v4v_status_url: str = "https://api.v4v.app/v1"
     dash_routing_fee_sats: int = 300
+
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
 
 @lru_cache

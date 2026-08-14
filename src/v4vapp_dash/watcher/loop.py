@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -12,6 +11,7 @@ from v4vapp_dash.amounts import rpc_dash_to_duffs
 from v4vapp_dash.config import Settings
 from v4vapp_dash.dashd.rpc import Dashd, DashdError
 from v4vapp_dash.db.mongo import COL_INVOICES
+from v4vapp_dash.logging import logger
 from v4vapp_dash.models.invoice import DashInvoiceState
 from v4vapp_dash.watcher.settlement import (
     WATCH_STATES,
@@ -20,8 +20,6 @@ from v4vapp_dash.watcher.settlement import (
     apply_settlement,
     merge_outputs,
 )
-
-logger = logging.getLogger("v4vapp_dash")
 
 
 @dataclass

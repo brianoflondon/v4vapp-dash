@@ -17,6 +17,7 @@ from v4vapp_dash.db.indexes import ensure_indexes
 from v4vapp_dash.db.mongo import Mongo
 from v4vapp_dash.db.wallet_state import ensure_wallet_state
 from v4vapp_dash.keys import load_xpub_material
+from v4vapp_dash.logging import logger, setup_logging
 from v4vapp_dash.watcher.loop import WatcherState, run_watcher
 
 
@@ -29,6 +30,11 @@ def _rpc_configured(password: str, url: str) -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    setup_logging(settings)
+    logger.info(
+        "dash api started",
+        extra={"network": settings.dash_network, "version": __version__},
+    )
     material = load_xpub_material(settings)
 
     mongo: Mongo | None = None
