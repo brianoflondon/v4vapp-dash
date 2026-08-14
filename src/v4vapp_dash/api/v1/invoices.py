@@ -14,6 +14,7 @@ from v4vapp_dash.db.wallet_state import WalletStateMismatch, allocate_receive_in
 from v4vapp_dash.keys import load_xpub_material
 from v4vapp_dash.limits.check import check_cust_rate_limit
 from v4vapp_dash.limits.hive_config import calculate_invoice_fees, fetch_hive_config
+from v4vapp_dash.logging import logger
 from v4vapp_dash.models.invoice import (
     DashInvoiceState,
     InvoiceCreate,
@@ -77,6 +78,10 @@ async def create_invoice(
         )
         if same:
             response.status_code = 200
+            request.state.invoice_id = str(existing["_id"])
+            request.state.external_id = existing.get("external_id")
+            if existing.get("cust_id") is not None:
+                request.state.cust_id = existing["cust_id"]
             return doc_to_out(existing)
         raise ApiError(
             409, "duplicate_external_id", "external_id already used with different params"
@@ -175,6 +180,22 @@ async def create_invoice(
     except DuplicateKeyError as exc:
         raise ApiError(409, "duplicate_external_id", "external_id already exists") from exc
     doc["_id"] = result.inserted_id
+    invoice_id = str(result.inserted_id)
+    request.state.invoice_id = invoice_id
+    request.state.external_id = body.external_id
+    if body.cust_id is not None:
+        request.state.cust_id = body.cust_id
+    logger.info(
+        "invoice created",
+        extra={
+            "invoice_id": invoice_id,
+            "external_id": body.external_id,
+            "cust_id": body.cust_id,
+            "sats": body.sats,
+            "state": DashInvoiceState.OPEN.value,
+            "address": address,
+        },
+    )
     return doc_to_out(doc)
 
 
@@ -191,10 +212,14 @@ async def get_by_external(
     request: Request,
     _key: str = Depends(require_api_key),
 ) -> InvoiceOut:
+    request.state.external_id = external_id
     mongo = _mongo(request)
     doc = await mongo.db[COL_INVOICES].find_one({"external_id": external_id})
     if doc is None:
         raise ApiError(404, "not_found", "invoice not found")
+    request.state.invoice_id = str(doc["_id"])
+    if doc.get("cust_id") is not None:
+        request.state.cust_id = doc["cust_id"]
     return doc_to_out(doc)
 
 
@@ -204,10 +229,15 @@ async def get_invoice(
     request: Request,
     _key: str = Depends(require_api_key),
 ) -> InvoiceOut:
+    request.state.invoice_id = invoice_id
     mongo = _mongo(request)
     doc = await mongo.db[COL_INVOICES].find_one({"_id": _as_object_id(invoice_id)})
     if doc is None:
         raise ApiError(404, "not_found", "invoice not found")
+    if doc.get("external_id") is not None:
+        request.state.external_id = doc["external_id"]
+    if doc.get("cust_id") is not None:
+        request.state.cust_id = doc["cust_id"]
     return doc_to_out(doc)
 
 
@@ -254,6 +284,7 @@ async def cancel_invoice(
     request: Request,
     _key: str = Depends(require_api_key),
 ) -> InvoiceOut:
+    request.state.invoice_id = invoice_id
     mongo = _mongo(request)
     now = datetime.now(UTC)
     doc = await mongo.db[COL_INVOICES].find_one_and_update(
@@ -269,7 +300,15 @@ async def cancel_invoice(
         existing = await mongo.db[COL_INVOICES].find_one({"_id": _as_object_id(invoice_id)})
         if existing is None:
             raise ApiError(404, "not_found", "invoice not found")
+        if existing.get("external_id") is not None:
+            request.state.external_id = existing["external_id"]
         raise ApiError(409, "invoice_not_cancelable", "invoice is not OPEN or already has funds")
+    if doc.get("external_id") is not None:
+        request.state.external_id = doc["external_id"]
+    logger.info(
+        "invoice canceled",
+        extra={"invoice_id": str(doc["_id"]), "external_id": doc.get("external_id")},
+    )
     return doc_to_out(doc)
 
 

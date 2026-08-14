@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -118,3 +119,36 @@ async def test_tick_settles_instantsend(monkeypatch: pytest.MonkeyPatch) -> None
     assert update["$set"]["state"] == DashInvoiceState.SETTLED.value
     assert update["$set"]["sats_credited"] == 25_000
     assert state.last_tick_at == NOW
+
+
+@pytest.mark.asyncio
+async def test_tick_settle_logs_invoice_extras(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    inv = _invoice()
+    inv["external_id"] = "hive:watch:1"
+    mongo = _Mongo([inv])
+    dashd = _Dashd(
+        utxos=[{"txid": "aa", "vout": 0, "address": "yAddr1", "amount": 0.5, "confirmations": 0}],
+        txs={"aa": {"instantlock": True, "chainlock": False, "confirmations": 0}},
+    )
+    settings = Settings(dash_poll_interval_s=10, dash_watch_batch=500, dash_dust_duffs=5460)
+    state = WatcherState()
+
+    class _FrozenDateTime:
+        @staticmethod
+        def now(tz: object = None) -> datetime:
+            return NOW
+
+    monkeypatch.setattr("v4vapp_dash.watcher.loop.datetime", _FrozenDateTime)
+    caplog.set_level(logging.INFO, logger="v4vapp_dash")
+    await tick(mongo=mongo, dashd=dashd, settings=settings, state=state)
+    settled = [r for r in caplog.records if r.getMessage() == "invoice settled"]
+    assert settled
+    rec = settled[-1]
+    assert rec.invoice_id == str(inv["_id"])
+    assert rec.external_id == "hive:watch:1"
+    assert rec.state == DashInvoiceState.SETTLED.value
+    assert rec.address == "yAddr1"
+    assert rec.duffs_received == 50_000_000
+    assert rec.txid == "aa"

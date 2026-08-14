@@ -1,8 +1,10 @@
 import asyncio
+import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 
 from v4vapp_dash import __version__
 from v4vapp_dash.api.deps import require_api_key
@@ -19,6 +21,37 @@ from v4vapp_dash.db.wallet_state import ensure_wallet_state
 from v4vapp_dash.keys import load_xpub_material
 from v4vapp_dash.logging import logger, setup_logging
 from v4vapp_dash.watcher.loop import WatcherState, run_watcher
+
+QUIET_EXACT = {"/health", "/"}
+
+
+def _quiet_success(method: str, path: str) -> bool:
+    if path in QUIET_EXACT:
+        return True
+    if method == "GET" and (
+        path.startswith("/v1/invoices/by-external/")
+        or (path.startswith("/v1/invoices/") and path.count("/") == 3)
+    ):
+        return True  # GET /v1/invoices/{id} — not list GET /v1/invoices
+    return False
+
+
+def _access_extra(request: Request, status: int, duration_ms: float) -> dict:
+    extra: dict = {
+        "method": request.method,
+        "path": request.url.path,
+        "status": status,
+        "duration_ms": duration_ms,
+    }
+    for key in ("invoice_id", "external_id", "cust_id"):
+        val = getattr(request.state, key, None)
+        if val is not None:
+            extra[key] = val
+    if "invoice_id" in request.path_params:
+        extra.setdefault("invoice_id", request.path_params["invoice_id"])
+    if "external_id" in request.path_params:
+        extra.setdefault("external_id", request.path_params["external_id"])
+    return extra
 
 
 def _rpc_configured(password: str, url: str) -> bool:
@@ -50,6 +83,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 fingerprint=material.master_fingerprint,
                 descriptor_range_end=settings.dash_descriptor_range_end,
             )
+    else:
+        logger.info("mongo disabled")
     app.state.mongo = mongo
 
     dashd: Dashd | None = None
@@ -69,6 +104,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 fingerprint=material.master_fingerprint,
                 range_end=settings.dash_descriptor_range_end,
             )
+    else:
+        logger.info("dashd rpc not configured")
     app.state.dashd = dashd
 
     watcher = WatcherState()
@@ -106,6 +143,35 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.dash_docs_enabled else None,
         openapi_url="/openapi.json" if settings.dash_docs_enabled else None,
     )
+
+    @app.middleware("http")
+    async def access_log(request: Request, call_next):
+        start = time.perf_counter()
+        response = None
+        err: BaseException | None = None
+        try:
+            response = await call_next(request)
+            return response
+        except Exception as exc:
+            err = exc
+            raise
+        finally:
+            try:
+                duration_ms = round((time.perf_counter() - start) * 1000, 1)
+                status = 500 if err is not None else response.status_code  # type: ignore[union-attr]
+                extra = _access_extra(request, status, duration_ms)
+                if status >= 500:
+                    level = logging.ERROR
+                elif status >= 400:
+                    level = logging.INFO
+                elif _quiet_success(request.method, request.url.path):
+                    level = logging.DEBUG
+                else:
+                    level = logging.INFO
+                logger.log(level, "request", extra=extra)
+            except Exception:
+                pass  # never hide the response / re-raise
+
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(invoices_router)

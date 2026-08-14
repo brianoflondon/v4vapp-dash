@@ -32,6 +32,16 @@ class WatcherState:
     stuck: int = 0
 
 
+def _invoice_extra(inv: dict[str, Any], decision: Decision) -> dict[str, Any]:
+    return {
+        "invoice_id": str(inv.get("_id")),
+        "external_id": inv.get("external_id"),
+        "address": inv.get("address"),
+        "state": decision.state.value,
+        "duffs_received": decision.duffs_received,
+    }
+
+
 async def run_watcher(
     *,
     mongo: Any,
@@ -46,7 +56,7 @@ async def run_watcher(
             state.last_error = None
         except Exception as exc:
             state.last_error = str(exc)
-            logger.exception("watcher tick failed")
+            logger.exception("watcher tick failed", extra={"ticks": state.ticks})
         try:
             await asyncio.wait_for(stop.wait(), timeout=settings.dash_poll_interval_s)
         except TimeoutError:
@@ -137,7 +147,11 @@ async def _apply_invoice(
     )
     if decision.stuck:
         watcher.stuck += 1
-        logger.error("invoice %s stuck pending settlement past settle_deadline_at", inv.get("_id"))
+        logger.error(
+            "invoice %s stuck pending settlement past settle_deadline_at",
+            inv.get("_id"),
+            extra=_invoice_extra(inv, decision),
+        )
 
     prev_received = int(inv.get("duffs_received") or 0)
     late_states = {DashInvoiceState.EXPIRED, DashInvoiceState.CANCELED}
@@ -147,9 +161,15 @@ async def _apply_invoice(
             prev.value,
             inv.get("address"),
             decision.duffs_received,
+            extra=_invoice_extra(inv, decision),
         )
 
     await _persist(mongo, inv, prev, decision, now)
+    if decision.state in {DashInvoiceState.SETTLED, DashInvoiceState.OVERPAID}:
+        extra = _invoice_extra(inv, decision)
+        if decision.txids:
+            extra["txid"] = decision.txids[-1].get("txid")
+        logger.info("invoice settled", extra=extra)
 
 
 async def _enrich(

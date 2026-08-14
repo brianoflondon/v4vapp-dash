@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -342,3 +343,85 @@ def test_rate_limit_allows_under_window(
         },
     )
     assert response.status_code == 201, response.text
+
+
+def test_get_invoice_request_is_not_info(
+    invoice_client: tuple[TestClient, _Mongo], caplog: pytest.LogCaptureFixture
+) -> None:
+    client, _mongo = invoice_client
+    created = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={"external_id": "hive:log:get", "sats": 1000, "expires_in_s": 120},
+    )
+    assert created.status_code == 201
+    invoice_id = created.json()["invoice_id"]
+    caplog.set_level(logging.DEBUG, logger="v4vapp_dash")
+    caplog.clear()
+    response = client.get(f"/v1/invoices/{invoice_id}", headers=HEADERS)
+    assert response.status_code == 200
+    info = [
+        r
+        for r in caplog.records
+        if r.name == "v4vapp_dash" and r.getMessage() == "request" and r.levelno >= logging.INFO
+    ]
+    assert info == []
+
+
+def test_post_create_emits_info_request(
+    invoice_client: tuple[TestClient, _Mongo], caplog: pytest.LogCaptureFixture
+) -> None:
+    client, _mongo = invoice_client
+    caplog.set_level(logging.INFO, logger="v4vapp_dash")
+    caplog.clear()
+    response = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={
+            "external_id": "hive:log:create",
+            "sats": 25000,
+            "expires_in_s": 900,
+            "cust_id": "alice",
+        },
+    )
+    assert response.status_code == 201
+    reqs = [
+        r for r in caplog.records if r.name == "v4vapp_dash" and r.getMessage() == "request"
+    ]
+    assert any(
+        r.levelno == logging.INFO
+        and getattr(r, "status", None) == 201
+        and getattr(r, "path", None) == "/v1/invoices"
+        and getattr(r, "method", None) == "POST"
+        for r in reqs
+    )
+    created = [r for r in caplog.records if r.getMessage() == "invoice created"]
+    assert created
+    rec = created[-1]
+    assert rec.levelno == logging.INFO
+    assert rec.invoice_id == response.json()["invoice_id"]
+    assert rec.external_id == "hive:log:create"
+    assert rec.cust_id == "alice"
+    assert rec.sats == 25_000
+    assert rec.state == "OPEN"
+    assert rec.address == response.json()["address"]
+
+
+def test_cancel_emits_invoice_canceled(
+    invoice_client: tuple[TestClient, _Mongo], caplog: pytest.LogCaptureFixture
+) -> None:
+    client, _mongo = invoice_client
+    created = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={"external_id": "hive:log:cancel", "sats": 1000, "expires_in_s": 120},
+    ).json()
+    caplog.set_level(logging.INFO, logger="v4vapp_dash")
+    caplog.clear()
+    response = client.post(f"/v1/invoices/{created['invoice_id']}/cancel", headers=HEADERS)
+    assert response.status_code == 200
+    canceled = [r for r in caplog.records if r.getMessage() == "invoice canceled"]
+    assert canceled
+    rec = canceled[-1]
+    assert rec.invoice_id == created["invoice_id"]
+    assert rec.external_id == "hive:log:cancel"

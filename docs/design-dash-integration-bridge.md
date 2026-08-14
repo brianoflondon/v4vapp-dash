@@ -1261,6 +1261,8 @@ Simplest possible receive path.
 
 ## Observability
 
+The structured-logs half of PR 9 (JSON logs to stdout) is superseded by the [JSON logging + YAML config](design-json-logging-and-yaml-config.md) side project; JSON is written to `logs/*.jsonl`, not stdout.
+
 JSON logs to stdout (Docker json-file rotation, matching api-ext). Fields:
 
 ```
