@@ -15,7 +15,7 @@ from bip_utils import (
 
 from v4vapp_dash.config import Network
 from v4vapp_dash.models.wallet import XpubMaterial
-from v4vapp_dash.wallet.hd import coin_for_network
+from v4vapp_dash.wallet.hd import coin_for_network, derive_receive
 
 
 def material_from_mnemonic(mnemonic: str, network: Network) -> XpubMaterial:
@@ -46,6 +46,12 @@ def main(argv: list[str] | None = None) -> int:
         "--mnemonic",
         help="BIP39 mnemonic. If omitted, read a single line from stdin.",
     )
+    parser.add_argument(
+        "--addresses",
+        type=int,
+        default=3,
+        help="Print the first N receive addresses so you can match your wallet app (default 3).",
+    )
     args = parser.parse_args(argv)
 
     mnemonic = args.mnemonic if args.mnemonic is not None else sys.stdin.readline()
@@ -57,7 +63,13 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps(material.model_dump(), indent=2))
+    payload = material.model_dump()
+    addrs = []
+    for index in range(max(args.addresses, 0)):
+        address, der = derive_receive(material.account_xpub, args.network, index)
+        addrs.append({"index": index, "path": der.path, "address": address})
+    payload["receive_addresses"] = addrs
+    print(json.dumps(payload, indent=2))
     return 0
 
 
