@@ -121,9 +121,9 @@ Client flags used in production: `tz_aware=True`, `retryWrites=True`, `retryRead
 
 | Env | Connection name | Hosts | Replica set | DB name | User |
 |---|---|---|---|---|---|
-| Docker-dev | `local_connection` | `dot.tail400e5.ts.net:37017` | `rsPytest` | `v4vapp-dev` | `v4vapp-dev-user` |
+| Docker-dev | `local_connection` | `dot.xxxxx.ts.net:37017` | `rsPytest` | `v4vapp-dev` | `v4vapp-dev-user` |
 | Compose local mongo | `mongo-pytest-local` | container port **37017** (must match host) | `rsPytest` | same | same |
-| Production | `gad-edi-dave` | `gad-v4vapp`, `edi-v4vapp`, `dave-v4vapp` `.tail400e5.ts.net:27017` | `rsV` | `v4vapp-backend` | `v4vapp-user` |
+| Production | `gad-edi-dave` | `gad-v4vapp`, `edi-v4vapp`, `dave-v4vapp` `.xxxxx.ts.net:27017` | `rsV` | `v4vapp-backend` | `v4vapp-user` |
 
 Users and indexes are declared in YAML (`DbsConfig` / `CollectionConfig` / `IndexConfig` in `config/setup.py`) and created at startup by `DBConn.setup_collections_indexes`. Collection names in the live dev DB:
 
@@ -184,7 +184,7 @@ Expired unpaid Lightning invoices are pruned by `delete_expired_unsettled_invoic
 
 `v4vapp-backend-v2/docker-compose.yaml` declares network `v4vapp-backend` as a project-local bridge (`driver: bridge`, **no** `name:`, **no** `external: true`). Compose therefore publishes it as `{project}_v4vapp-backend`, typically `v4vapp-backend-v2_v4vapp-backend`. Confirm with `docker network ls`. Services on that network: `hive-monitor`, `db-monitor`, `magi-monitor`, `api-v2`, `admin-interface`, `mongo-pytest-local`, `redis-pytest-local`. **`umbrel-node-monitor` is not attached** (no `networks:` key).
 
-Mongo **must** use port 37017 inside and outside the replica-set member so `rsPytest` hostnames resolve. `admin-interface` publishes **`0.0.0.0:8080:8080`** — dash must **not** bind host 8080. Public HTTPS is a **separate** compose (`v4vapp-ext-traefik`, `traefik-ssl-cloudflare`) on external network `traefik-public`. Private services stay on Tailscale (`*.tail400e5.ts.net`).
+Mongo **must** use port 37017 inside and outside the replica-set member so `rsPytest` hostnames resolve. `admin-interface` publishes **`0.0.0.0:8080:8080`** — dash must **not** bind host 8080. Public HTTPS is a **separate** compose (`v4vapp-ext-traefik`, `traefik-ssl-cloudflare`) on external network `traefik-public`. Private services stay on Tailscale (`*.xxxxx.ts.net`).
 
 Default dash compose uses its **own** internal network so `docker compose up` works on a greenfield clone. Production overlay joins the *actual* backend network name. From `api-v2` the service is `http://v4vapp-dash:8080` (container port only). **Production publishes no host port.** A local/regtest overlay may bind `127.0.0.1:8088:8080` for operator debugging; never `0.0.0.0` and never `traefik-public`.
 
@@ -275,7 +275,7 @@ At the expected load (see [Quantification](#quantification)) a **batched** `list
 - **Testnet** (profile `testnet`): `dashpay/dashd` + `TESTNET=1`. Real InstantSend. Faucet for funding. Optional; not required for CI. Same BIP44 path as regtest. Fallback confirmations if IS/CL missing: **2**.
 - **Mainnet**: pruned dashd (`prune=550` or larger) **plus** a watch-only descriptor wallet imported with `timestamp: "now"`. Pruning is compatible with a wallet; it is **not** compatible with `txindex=1`. We do not need `txindex` if every receive address is in the wallet descriptor. Policy: InstantSend **or** ChainLock; fallback confirmations if both missing: **6**.
 
-A full unpruned Dash chain is tens of GB. Dev machines should not sync mainnet. Production can run pruned (~2–10 GB) or use a dedicated host's dashd over Tailscale, the same way LND is `umbrel.tail400e5.ts.net:10009`.
+A full unpruned Dash chain is tens of GB. Dev machines should not sync mainnet. Production can run pruned (~2–10 GB) or use a dedicated host's dashd over Tailscale, the same way LND is `umbrel.xxxxx.ts.net:10009`.
 
 ### Python L1 options (for completeness)
 
@@ -1135,10 +1135,10 @@ networks:
     external: true
 ```
 
-To run **without** a local dashd (Umbrel/Tailscale, same pattern as LND `umbrel.tail400e5.ts.net:10009`):
+To run **without** a local dashd (Umbrel/Tailscale, same pattern as LND `umbrel.xxxxx.ts.net:10009`):
 
 ```
-DASH_RPC_URL=http://umbrel.tail400e5.ts.net:9998
+DASH_RPC_URL=http://umbrel.xxxxx.ts.net:9998
 DASH_RPC_WALLET=watch
 ```
 
@@ -1155,10 +1155,10 @@ DASH_PORT=8080
 DASH_DOCS_ENABLED=true
 
 # rsPytest / mongo-pytest-local: NO auth (DBConn strips credentials for rsPytest)
-MONGO_URI=mongodb://dot.tail400e5.ts.net:37017/v4vapp-dev?replicaSet=rsPytest
+MONGO_URI=mongodb://dot.xxxxx.ts.net:37017/v4vapp-dev?replicaSet=rsPytest
 MONGO_DB_NAME=v4vapp-dev
 # Production rsV (auth, scoped user):
-# MONGO_URI=mongodb://v4vapp-dash-user:SECRET@gad-v4vapp.tail400e5.ts.net:27017,edi-v4vapp.tail400e5.ts.net:27017,dave-v4vapp.tail400e5.ts.net:27017/v4vapp-backend?authSource=v4vapp-backend&replicaSet=rsV
+# MONGO_URI=mongodb://v4vapp-dash-user:SECRET@gad-v4vapp.xxxxx.ts.net:27017,edi-v4vapp.xxxxx.ts.net:27017,dave-v4vapp.xxxxx.ts.net:27017/v4vapp-backend?authSource=v4vapp-backend&replicaSet=rsV
 
 DASH_RPC_URL=http://dashd:9998
 DASH_RPC_WALLET=watch

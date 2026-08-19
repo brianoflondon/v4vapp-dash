@@ -78,6 +78,7 @@ async def create_invoice(
         same = (
             int(existing["sats_requested"]) == body.sats
             and int(existing.get("expires_in_s", -1)) == body.expires_in_s
+            and existing.get("lightning_invoice") == body.lightning_invoice
         )
         if same:
             response.status_code = 200
@@ -132,6 +133,7 @@ async def create_invoice(
         "external_id": body.external_id,
         "cust_id": body.cust_id,
         "memo": body.memo,
+        "lightning_invoice": body.lightning_invoice,
         "state": DashInvoiceState.OPEN.value,
         "address": address,
         "uri": payment_uri(address, priced.dash_quoted),
@@ -181,6 +183,16 @@ async def create_invoice(
     try:
         result = await mongo.db[COL_INVOICES].insert_one(doc)
     except DuplicateKeyError as exc:
+        if body.lightning_invoice:
+            clash = await mongo.db[COL_INVOICES].find_one(
+                {"lightning_invoice": body.lightning_invoice}
+            )
+            if clash is not None and clash.get("external_id") != body.external_id:
+                raise ApiError(
+                    409,
+                    "duplicate_lightning_invoice",
+                    "lightning_invoice already used on another invoice",
+                ) from exc
         raise ApiError(409, "duplicate_external_id", "external_id already exists") from exc
     doc["_id"] = result.inserted_id
     invoice_id = str(result.inserted_id)

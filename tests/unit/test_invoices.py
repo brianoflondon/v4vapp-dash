@@ -206,6 +206,27 @@ def test_create_invoice_returns_y_address_and_quoted_duffs(
     assert mongo.db[COL_WALLET_STATE].docs[0]["next_receive_index"] == 1
 
 
+def test_create_stores_lightning_invoice(
+    invoice_client: tuple[TestClient, _Mongo],
+) -> None:
+    client, mongo = invoice_client
+    bolt11 = "lnbc250u1ptestinvoice"
+    response = client.post(
+        "/v1/invoices",
+        headers=HEADERS,
+        json={
+            "external_id": "hive:ln:1",
+            "sats": 25000,
+            "expires_in_s": 900,
+            "lightning_invoice": bolt11,
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["lightning_invoice"] == bolt11
+    stored = mongo.db[COL_INVOICES].docs[0]
+    assert stored["lightning_invoice"] == bolt11
+
+
 def test_create_is_idempotent_for_same_payload(
     invoice_client: tuple[TestClient, _Mongo],
 ) -> None:

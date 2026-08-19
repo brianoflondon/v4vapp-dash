@@ -31,6 +31,12 @@ class InvoiceCreate(BaseModel):
     external_id: str = Field(min_length=1, max_length=128)
     sats: int = Field(ge=1)
     expires_in_s: int = Field(ge=60, le=86_400)
+    lightning_invoice: str | None = Field(
+        default=None,
+        min_length=10,
+        max_length=4096,
+        description="Bolt11 the Dash payment is meant to settle (from api-ext)",
+    )
     cust_id: str | None = None
     memo: str | None = Field(default=None, max_length=300)
     min_confirmations: int | None = Field(default=None, ge=1, le=100)
@@ -94,6 +100,7 @@ class InvoiceOut(BaseModel):
     txids: list[InvoiceTx] = Field(default_factory=list)
     cust_id: str | None = None
     memo: str | None = None
+    lightning_invoice: str | None = None
 
 
 class InvoiceListOut(BaseModel):
@@ -159,4 +166,5 @@ def doc_to_out(doc: dict[str, Any]) -> InvoiceOut:
         txids=[InvoiceTx.model_validate(tx) for tx in doc.get("txids") or []],
         cust_id=doc.get("cust_id"),
         memo=doc.get("memo"),
+        lightning_invoice=doc.get("lightning_invoice"),
     )

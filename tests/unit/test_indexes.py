@@ -14,10 +14,13 @@ def test_invoice_index_names_and_uniques() -> None:
         "cust_id",
         "cust_state_settled",
         "created_at",
+        "lightning_invoice",
     ]
     by_name = {m.document["name"]: m.document for m in INVOICE_INDEXES}
     assert by_name["external_id"]["unique"] is True
     assert by_name["address"]["unique"] is True
+    assert by_name["lightning_invoice"]["unique"] is True
+    assert by_name["lightning_invoice"]["sparse"] is True
     assert "unique" not in by_name["state_expires"]
 
 

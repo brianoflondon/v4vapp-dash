@@ -66,9 +66,16 @@ async def health(request: Request) -> dict[str, Any]:
             "last_error": watcher.last_error,
         }
 
+    rpc_wanted = bool(
+        settings.dash_rpc_url
+        and settings.dash_rpc_password
+        and settings.dash_rpc_password != "change-me"
+    )
     if mongo_ok is False or (dashd_info is not None and dashd_info.get("error")):
         status = "error"
     elif dashd_info is not None and dashd_info.get("initialblockdownload"):
+        status = "degraded"
+    elif rpc_wanted and dashd is None:
         status = "degraded"
     elif watcher is not None and watcher.last_error:
         status = "degraded"

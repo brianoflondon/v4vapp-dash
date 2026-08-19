@@ -87,7 +87,7 @@ Shares the backend test database `v4vapp-dev` on replica set `rsPytest` (`mongo-
 | Where this process runs | `MONGO_URI` (from backend config) |
 |---|---|
 | Host on dot (`devhive.config.yaml`) | `mongodb://dot:37017/v4vapp-dev?replicaSet=rsPytest` |
-| Other Docker stack (`devdocker.config.yaml`) | `mongodb://dot.tail400e5.ts.net:37017/v4vapp-dev?replicaSet=rsPytest` |
+| Other Docker stack (`devdocker.config.yaml`) | `mongodb://dot.xxxxx.ts.net:37017/v4vapp-dev?replicaSet=rsPytest` |
 
 Startup creates `dash_invoices`, `dash_wallet_state`, `dash_payouts` and their indexes. It does not write `ledger` / `invoices`. Wallet state is one document per `DASH_NETWORK`; boot aborts if the stored xpub/fingerprint disagrees with env.
 

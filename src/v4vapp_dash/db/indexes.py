@@ -16,6 +16,12 @@ INVOICE_INDEXES = [
         name="cust_state_settled",
     ),
     IndexModel([("created_at", ASCENDING)], name="created_at"),
+    IndexModel(
+        [("lightning_invoice", ASCENDING)],
+        name="lightning_invoice",
+        unique=True,
+        sparse=True,
+    ),
 ]
 
 # _id is the network; no extra unique index required.

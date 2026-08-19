@@ -4,6 +4,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import Depends, FastAPI, Request
 
 from v4vapp_dash import __version__
@@ -12,14 +13,15 @@ from v4vapp_dash.api.errors import register_exception_handlers
 from v4vapp_dash.api.health import router as health_router
 from v4vapp_dash.api.v1.invoices import router as invoices_router
 from v4vapp_dash.api.v1.payouts import router as payouts_router
-from v4vapp_dash.config import get_settings
+from v4vapp_dash.config import Settings, get_settings
 from v4vapp_dash.dashd.bootstrap import bootstrap_watch_wallet
-from v4vapp_dash.dashd.rpc import Dashd
+from v4vapp_dash.dashd.rpc import Dashd, DashdError
 from v4vapp_dash.db.indexes import ensure_indexes
 from v4vapp_dash.db.mongo import Mongo
 from v4vapp_dash.db.wallet_state import ensure_wallet_state
 from v4vapp_dash.keys import load_xpub_material
 from v4vapp_dash.logging import logger, setup_logging
+from v4vapp_dash.models.wallet import XpubMaterial
 from v4vapp_dash.watcher.loop import WatcherState, run_watcher
 
 QUIET_EXACT = {"/health", "/"}
@@ -60,6 +62,67 @@ def _rpc_configured(password: str, url: str) -> bool:
     return True
 
 
+_RPC_RETRY_S = 10.0
+
+
+async def _connect_dashd(settings: Settings, material: XpubMaterial | None) -> Dashd:
+    dashd = Dashd(
+        settings.dash_rpc_url,
+        user=settings.dash_rpc_user,
+        password=settings.dash_rpc_password,
+        wallet=settings.dash_rpc_wallet,
+    )
+    try:
+        await dashd.getblockchaininfo()
+        if material is not None:
+            await bootstrap_watch_wallet(
+                dashd,
+                network=settings.dash_network,
+                account_xpub=material.account_xpub,
+                fingerprint=material.master_fingerprint,
+                range_end=settings.dash_descriptor_range_end,
+            )
+        return dashd
+    except Exception:
+        await dashd.aclose()
+        raise
+
+
+async def _dashd_reconnect(
+    app: FastAPI,
+    *,
+    settings: Settings,
+    material: XpubMaterial | None,
+    mongo: Mongo | None,
+    watcher: WatcherState,
+    stop: asyncio.Event,
+) -> None:
+    """Retry dashd until it answers, then start the invoice watcher."""
+    delay = _RPC_RETRY_S
+    while not stop.is_set() and getattr(app.state, "dashd", None) is None:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=delay)
+            return
+        except TimeoutError:
+            pass
+        try:
+            dashd = await _connect_dashd(settings, material)
+        except (httpx.TransportError, DashdError) as exc:
+            logger.warning(
+                "dashd rpc unavailable",
+                extra={"rpc_url": settings.dash_rpc_url, "err": str(exc)},
+            )
+            delay = min(60.0, delay * 2)
+            continue
+        app.state.dashd = dashd
+        logger.info("dashd rpc connected", extra={"rpc_url": settings.dash_rpc_url})
+        if mongo is not None:
+            await run_watcher(
+                mongo=mongo, dashd=dashd, settings=settings, state=watcher, stop=stop
+            )
+        return
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -89,20 +152,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     dashd: Dashd | None = None
     if _rpc_configured(settings.dash_rpc_password, settings.dash_rpc_url):
-        dashd = Dashd(
-            settings.dash_rpc_url,
-            user=settings.dash_rpc_user,
-            password=settings.dash_rpc_password,
-            wallet=settings.dash_rpc_wallet,
-        )
-        await dashd.getblockchaininfo()
-        if material is not None:
-            await bootstrap_watch_wallet(
-                dashd,
-                network=settings.dash_network,
-                account_xpub=material.account_xpub,
-                fingerprint=material.master_fingerprint,
-                range_end=settings.dash_descriptor_range_end,
+        try:
+            dashd = await _connect_dashd(settings, material)
+        except (httpx.TransportError, DashdError) as exc:
+            logger.warning(
+                "dashd rpc unavailable",
+                extra={"rpc_url": settings.dash_rpc_url, "err": str(exc)},
             )
     else:
         logger.info("dashd rpc not configured")
@@ -111,24 +166,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     watcher = WatcherState()
     app.state.watcher = watcher
     stop = asyncio.Event()
-    task: asyncio.Task[None] | None = None
+    bg: list[asyncio.Task[None]] = []
     if mongo is not None and dashd is not None:
-        task = asyncio.create_task(
-            run_watcher(mongo=mongo, dashd=dashd, settings=settings, state=watcher, stop=stop)
+        bg.append(
+            asyncio.create_task(
+                run_watcher(mongo=mongo, dashd=dashd, settings=settings, state=watcher, stop=stop)
+            )
+        )
+    elif _rpc_configured(settings.dash_rpc_password, settings.dash_rpc_url) and dashd is None:
+        bg.append(
+            asyncio.create_task(
+                _dashd_reconnect(
+                    app,
+                    settings=settings,
+                    material=material,
+                    mongo=mongo,
+                    watcher=watcher,
+                    stop=stop,
+                )
+            )
         )
 
     try:
         yield
     finally:
         stop.set()
-        if task is not None:
+        for task in bg:
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
-        if dashd is not None:
-            await dashd.aclose()
+        live = getattr(app.state, "dashd", None)
+        if live is not None:
+            await live.aclose()
         if mongo is not None:
             await mongo.close()
 
